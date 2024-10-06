@@ -13,6 +13,7 @@ mod dwarf;
 mod ifdata;
 mod insert;
 mod remove;
+mod search;
 mod symbol;
 mod update;
 mod version;
@@ -118,6 +119,9 @@ fn core() -> Result<(), String> {
     let merge_includes = *arg_matches
         .get_one::<bool>("MERGEINCLUDES")
         .expect("option merge-includes must always exist");
+    let calibrate = *arg_matches
+        .get_one::<bool>("CALIBRATE")
+        .expect("option calibrate must always exist");
     let verbose = arg_matches.get_count("VERBOSE");
 
     let now = Instant::now();
@@ -487,9 +491,33 @@ fn core() -> Result<(), String> {
         }
     }
 
+    // caltool
+    if calibrate {
+        process_calibration(&arg_matches, strict, verbose, now, &mut a2l_file)?;
+    }
+
     cond_print!(verbose, now, "\nRun complete. Have a nice day!\n\n");
 
     Ok(())
+}
+
+fn process_calibration(
+    arg_matches: &ArgMatches,
+    strict: bool,
+    verbose: u8,
+    now: Instant,
+    a2l_file: &mut A2lFile
+) -> Result<bool, String> {
+
+    let mut log_msgs: Vec<String> = Vec::new();
+
+    let characteristics = search::search_characteristics(a2l_file, &["pippo.*"], &mut log_msgs);
+    for (k, v) in &characteristics {
+        let a = v.address;
+        println!("{k} 0x{a:08x}")
+    }
+
+    Ok(true)
 }
 
 // load or create an a2l file, depending on the command line
@@ -543,7 +571,7 @@ fn load_or_create_a2l(
             format!("Input \"{}\" loaded", input_filename.to_string_lossy())
         );
         Ok((input_filename, a2l_file))
-    } else if arg_matches.contains_id("CREATE") {
+    } else if arg_matches.contains_id("CREATE") | arg_matches.contains_id("CALIBRATE") {
         // dummy file name
         let input_filename = OsStr::new("<newly created>");
         // a minimal a2l file needs only a PROJECT containing a MODULE
@@ -565,7 +593,7 @@ fn load_or_create_a2l(
         Ok((input_filename, a2l_file))
     } else {
         // shouldn't be able to get here, the clap config requires either INPUT or CREATE
-        Err("impossible: no input filename and no --create".to_string())
+        Err("impossible: no input filename and no --create nor --calibrate".to_string())
     }
 }
 
@@ -589,6 +617,12 @@ fn get_args() -> ArgMatches {
     .arg(Arg::new("CREATE")
         .help("Create a new A2L file instead of loading an existing one")
         .long("create")
+        .number_of_values(0)
+        .action(clap::ArgAction::SetTrue)
+    )
+    .arg(Arg::new("CALIBRATE")
+        .help("")
+        .long("calibrate")
         .number_of_values(0)
         .action(clap::ArgAction::SetTrue)
     )
@@ -809,8 +843,8 @@ fn get_args() -> ArgMatches {
     )
     .group(
         ArgGroup::new("INPUT_ARGGROUP")
-            .args(["INPUT", "CREATE"])
-            .multiple(false)
+            .args(["INPUT", "CREATE", "CALIBRATE"])
+            .multiple(true)
             .required(true)
      )
     .group(
