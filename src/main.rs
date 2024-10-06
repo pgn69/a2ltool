@@ -1,6 +1,6 @@
 use clap::{builder::ValueParser, parser::ValuesRef, Arg, ArgGroup, ArgMatches, Command};
 
-use a2lfile::{A2lError, A2lFile, A2lObject};
+use a2lfile::{A2lError, A2lFile, A2lObject, DataType};
 use dwarf::DebugData;
 use std::{
     ffi::{OsStr, OsString},
@@ -511,10 +511,31 @@ fn process_calibration(
 
     let mut log_msgs: Vec<String> = Vec::new();
 
+    let record_layouts = search::search_reord_layout(a2l_file, &[".*"] , &mut log_msgs);
     let characteristics = search::search_characteristics(a2l_file, &["pippo.*"], &mut log_msgs);
     for (k, v) in &characteristics {
         let a = v.address;
-        println!("{k} 0x{a:08x}")
+        let mut t = None;
+        let mut s = 0;
+        if let Some(rl) = record_layouts.get(&v.deposit) {
+            if let Some(fnc_value) = &rl.fnc_values {
+                t = Some(fnc_value.datatype);
+                s = match fnc_value.datatype {
+                    DataType::Ubyte => 1,
+                    DataType::Sbyte => 1,
+                    DataType::Uword => 2,
+                    DataType::Sword => 2,
+                    DataType::Ulong => 4,
+                    DataType::Slong => 4,
+                    DataType::AUint64 => 8,
+                    DataType::AInt64 => 8,
+                    DataType::Float16Ieee => 2,
+                    DataType::Float32Ieee => 4,
+                    DataType::Float64Ieee => 8,
+                }
+            };
+        };
+        println!("{k} 0x{a:08x} {t:?}");
     }
 
     Ok(true)
