@@ -5,7 +5,7 @@ pub(crate) fn search_measurements<'a>(
     a2l_file: &'a A2lFile,
     regex_strings: &[&str],
     log_messages: &mut Vec<String>,
-) -> HashMap<String, &'a Measurement> {
+) -> HashMap<&'a String, &'a Measurement> {
     let mut found = HashMap::new();
 
     let compiled_regexes = regex_strings
@@ -26,7 +26,7 @@ pub(crate) fn search_measurements<'a>(
         for measurement in &module.measurement {
             for regex in &compiled_regexes {
                 if regex.is_match(&measurement.name) {
-                    found.insert(measurement.name.clone(), measurement);
+                    found.insert(&measurement.name, measurement);
                 }
             }
         }
@@ -39,7 +39,7 @@ pub(crate) fn search_characteristics<'a>(
     a2l_file: &'a A2lFile,
     regex_strings: &[&str],
     log_messages: &mut Vec<String>,
-) -> HashMap<String, &'a Characteristic> {
+) -> HashMap<&'a String, &'a Characteristic> {
     let mut found = HashMap::new();
 
     let compiled_regexes = regex_strings
@@ -60,7 +60,7 @@ pub(crate) fn search_characteristics<'a>(
         for characteristic in &module.characteristic {
             for regex in &compiled_regexes {
                 if regex.is_match(&characteristic.name) {
-                    found.insert(characteristic.name.clone(), characteristic);
+                    found.insert(&characteristic.name, characteristic);
                 }
             }
         }
@@ -73,7 +73,7 @@ pub(crate) fn search_reord_layout<'a>(
     a2l_file: &'a A2lFile,
     regex_strings: &[&str],
     log_messages: &mut Vec<String>,
-) -> HashMap<String, &'a RecordLayout> {
+) -> HashMap<&'a String, &'a RecordLayout> {
     let mut found = HashMap::new();
 
     let compiled_regexes = regex_strings
@@ -94,7 +94,7 @@ pub(crate) fn search_reord_layout<'a>(
         for record_layout in &module.record_layout {
             for regex in &compiled_regexes {
                 if regex.is_match(&record_layout.name) {
-                    found.insert(record_layout.name.clone(), record_layout);
+                    found.insert(&record_layout.name, record_layout);
                 }
             }
         }

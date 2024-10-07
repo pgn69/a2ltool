@@ -513,7 +513,7 @@ fn process_calibration(
 
     let record_layouts = search::search_reord_layout(a2l_file, &[".*"] , &mut log_msgs);
     let characteristics = search::search_characteristics(a2l_file, &["pippo.*"], &mut log_msgs);
-    for (k, v) in &characteristics {
+    for (k, v) in characteristics {
         let a = v.address;
         let mut t = None;
         let mut s = 0;
