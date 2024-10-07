@@ -8,6 +8,8 @@ use std::{
     time::Instant,
 };
 
+use bin_file::BinFile;
+
 mod datatype;
 mod dwarf;
 mod ifdata;
@@ -510,13 +512,28 @@ fn process_calibration(
 ) -> Result<bool, String> {
 
     let mut log_msgs: Vec<String> = Vec::new();
+    let mut binfile = BinFile::from_file("pg/zephyr.hex").unwrap();
+
+    for segment in binfile.segments() {
+        let (_, data) = segment.get_tuple();
+        let size = data.len();
+        println!("BIN Segment {:08x} - {:08x}", segment.minimum_address(), segment.minimum_address() + size);
+        // for (address, data) in segment.chunks(Some(2), None)? {
+        //     println!("BIN Address: {} Data: {:?}", address, data);
+        // }
+    }
+
 
     let record_layouts = search::search_reord_layout(a2l_file, &[".*"] , &mut log_msgs);
-    let characteristics = search::search_characteristics(a2l_file, &["pippo.*"], &mut log_msgs);
+    let characteristics = search::search_characteristics(a2l_file, &[".*"], &mut log_msgs);
     for (k, v) in characteristics {
         let a = v.address;
         let mut t = None;
+        let mut dim = 1;
         let mut s = 0;
+        if let Some(matrix_dim) = &v.matrix_dim {
+            dim = matrix_dim.dim_list.iter().product();
+        }
         if let Some(rl) = record_layouts.get(&v.deposit) {
             if let Some(fnc_value) = &rl.fnc_values {
                 t = Some(fnc_value.datatype);
@@ -535,8 +552,11 @@ fn process_calibration(
                 }
             };
         };
-        println!("{k} 0x{a:08x} {t:?}");
+        let range = a as usize..a as usize + (s * dim) as usize;
+        let val = binfile.get_values_by_address_range(range);
+        println!("{k} 0x{a:08x} {t:?} -> {val:?}");
     }
+
 
     Ok(true)
 }
