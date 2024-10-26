@@ -3,12 +3,10 @@ use clap::{builder::ValueParser, parser::ValuesRef, Arg, ArgGroup, ArgMatches, C
 use a2lfile::{A2lError, A2lFile, A2lObject, DataType};
 use dwarf::DebugData;
 use std::{
-    ffi::{OsStr, OsString},
-    fmt::Display,
-    time::Instant,
+    ffi::{OsStr, OsString}, fmt::Display, fs::File, io::Write, path::Path, time::Instant
 };
 
-use bin_file::BinFile;
+use bin_file::{BinFile, SRecordAddressLength, IHexFormat};
 
 mod datatype;
 mod dwarf;
@@ -21,6 +19,12 @@ mod update;
 mod version;
 mod xcp;
 
+#[derive(Debug, Clone, Copy)]
+pub enum BinFileFormat {
+    SREC,
+    IHEX,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum A2lVersion {
     V1_5_0,
@@ -29,6 +33,16 @@ pub enum A2lVersion {
     V1_6_1,
     V1_7_0,
     V1_7_1,
+}
+
+#[derive(Debug)]
+struct Calibration {
+    symbol: String,
+    value_repr: Option<String>,
+    address: Option<u32>,
+    size: Option<u16>,
+    dim: Option<u16>,
+    dtype: Option<DataType>,
 }
 
 macro_rules! cond_print {
@@ -495,7 +509,27 @@ fn core() -> Result<(), String> {
 
     // caltool
     if calibrate {
-        process_calibration(&arg_matches, strict, verbose, now, &mut a2l_file)?;
+        let mut log_msgs: Vec<String> = Vec::new();
+
+        if let Some(binary_file) = arg_matches.get_one::<OsString>("BINARY") {
+            let mut binfile = BinFile::from_file(binary_file).unwrap();
+            if let Some(csv_file) = arg_matches.get_one::<OsString>("CALIB_WRITE") {
+                let mut calibrations = read_calibrations_csv(csv_file);
+                calibration_symbols_load(&mut calibrations, &mut a2l_file, elf_info, enable_structures, &mut log_msgs)?;
+                write_calibration(&calibrations, &mut binfile, verbose, &mut log_msgs)?;
+                save_binfile(&binary_file, &binfile, verbose, &mut log_msgs)?;
+
+            } else if let Some(csv_file) = arg_matches.get_one::<OsString>("CALIB_READ") {
+                let mut calibrations = read_calibrations_csv(csv_file);
+                calibration_symbols_load(&mut calibrations, &mut a2l_file, elf_info, enable_structures, &mut log_msgs)?;
+                read_calibration(&mut calibrations, &binfile, verbose, &mut log_msgs)?;
+                write_calibrations_csv(csv_file, &calibrations)?;
+            }
+        }
+
+        for msg in log_msgs {
+            cond_print!(verbose, now, msg);
+        }
     }
 
     cond_print!(verbose, now, "\nRun complete. Have a nice day!\n\n");
@@ -503,60 +537,220 @@ fn core() -> Result<(), String> {
     Ok(())
 }
 
-fn process_calibration(
-    arg_matches: &ArgMatches,
-    strict: bool,
+fn read_calibrations_csv(csv_file: &OsString) -> Vec<Calibration> {
+    let mut ret: Vec<Calibration> = Vec::new();
+    let text = std::fs::read_to_string(csv_file).expect("Cannot read CSV file");
+
+    for line in text.lines() {
+        let fields:Vec<&str> = line.split(';').collect();
+        if fields.len() > 0 {
+            let f = fields[0].trim();
+            if f.len() > 0 && ! f.starts_with("#") {
+                let mut cal = Calibration {symbol: f.to_string(), value_repr: None, address: None, size: None, dim: None, dtype: None };
+                if fields.len() > 1 {
+                    let f = fields[1].trim();
+                    if f.len() > 0 {
+                        cal.value_repr = Some(f.to_string());
+                    }
+                }
+                ret.push(cal);
+            }
+        }
+    }
+
+    ret
+}
+
+fn write_calibrations_csv(csv_file: &OsString, calibrations: &Vec<Calibration>) -> Result<bool, String>{
+    let mut calmap = std::collections::HashMap::new();
+    for cal in calibrations {
+        calmap.insert(&cal.symbol[..], cal);
+    }
+
+    let text = std::fs::read_to_string(csv_file).expect("Cannot read CSV file");
+    let mut file = File::create(csv_file).expect("Cannot open CSV file for writing");
+
+    for line in text.lines() {
+        let mut bypass = true;
+        let l = line.trim();
+        let fields:Vec<&str> = line.split(';').collect();
+        if fields.len() > 0 {
+            let f = fields[0].trim();
+            if f.len() > 0 && ! f.starts_with("#") {
+                if let Some(cal) = calmap.get(f) {
+                    bypass = false;
+                    writeln!(file, "{};{}", (*cal).symbol, (*cal).value_repr.as_ref().unwrap_or(&String::from(""))).expect("Error writing CSV file");
+                }
+            }
+        }
+        if bypass {
+            writeln!(file, "{}", l).expect("Error writing CSV file");
+        }
+    }
+
+    Ok(true)
+}
+
+fn calibration_symbols_load(
+    calibrations: &mut Vec<Calibration>,
+    a2l_file: &mut A2lFile,
+    elf_info: Option<DebugData>,
+    enable_structures: bool,
+    log_msgs: &mut Vec<String>,
+) -> Result<bool, String> {
+    let mut characteristics = search::search_characteristics(a2l_file, &[".*"], log_msgs);
+
+    if let Some(debugdata) = &elf_info {
+        // Add the characteristics that are listed in the CSV file, but not in the A2L.
+        let mut characteristic_symbols: Vec<&str> = Vec::new();
+        for cal in &*calibrations {
+            if ! characteristics.contains_key(&cal.symbol) {
+                characteristic_symbols.push(&cal.symbol);
+            }
+        }
+        if !characteristic_symbols.is_empty() {
+            insert::insert_items(
+                a2l_file,
+                debugdata,
+                vec![],
+                characteristic_symbols,
+                Some("AUTO"),
+                log_msgs,
+                enable_structures,
+            );
+
+            characteristics = search::search_characteristics(a2l_file, &[".*"], log_msgs);
+        }
+    }
+
+    let record_layouts = search::search_reord_layout(a2l_file, &[".*"] , log_msgs);
+
+    for cal in &mut *calibrations {
+        if let Some(characteristic) = characteristics.get(&cal.symbol) {
+            cal.address = Some(characteristic.address);
+            if let Some(matrix_dim) = &characteristic.matrix_dim {
+                cal.dim = Some(matrix_dim.dim_list.iter().product());
+            } else {
+                cal.dim = Some(1);
+            }
+            if let Some(rl) = record_layouts.get(&characteristic.deposit) {
+                if let Some(fnc_value) = &rl.fnc_values {
+                    cal.size = Some(datatype::get_datatype_size(&fnc_value.datatype));
+                    cal.dtype = Some(fnc_value.datatype);
+                };
+            };
+        } else {
+            log_msgs.push(format!("Symbol {} not found", &cal.symbol));
+        }
+    }
+
+    Ok(true)
+}
+
+fn read_calibration(
+    calibrations: &mut Vec<Calibration>,
+    binfile: &BinFile,
     verbose: u8,
-    now: Instant,
-    a2l_file: &mut A2lFile
+    log_msgs: &mut Vec<String>,
 ) -> Result<bool, String> {
 
-    let mut log_msgs: Vec<String> = Vec::new();
-    let mut binfile = BinFile::from_file("pg/zephyr.hex").unwrap();
-
-    for segment in binfile.segments() {
-        let (_, data) = segment.get_tuple();
-        let size = data.len();
-        println!("BIN Segment {:08x} - {:08x}", segment.minimum_address(), segment.minimum_address() + size);
-        // for (address, data) in segment.chunks(Some(2), None)? {
-        //     println!("BIN Address: {} Data: {:?}", address, data);
-        // }
-    }
-
-
-    let record_layouts = search::search_reord_layout(a2l_file, &[".*"] , &mut log_msgs);
-    let characteristics = search::search_characteristics(a2l_file, &[".*"], &mut log_msgs);
-    for (k, v) in characteristics {
-        let a = v.address;
-        let mut t = None;
-        let mut dim = 1;
-        let mut s = 0;
-        if let Some(matrix_dim) = &v.matrix_dim {
-            dim = matrix_dim.dim_list.iter().product();
-        }
-        if let Some(rl) = record_layouts.get(&v.deposit) {
-            if let Some(fnc_value) = &rl.fnc_values {
-                t = Some(fnc_value.datatype);
-                s = match fnc_value.datatype {
-                    DataType::Ubyte => 1,
-                    DataType::Sbyte => 1,
-                    DataType::Uword => 2,
-                    DataType::Sword => 2,
-                    DataType::Ulong => 4,
-                    DataType::Slong => 4,
-                    DataType::AUint64 => 8,
-                    DataType::AInt64 => 8,
-                    DataType::Float16Ieee => 2,
-                    DataType::Float32Ieee => 4,
-                    DataType::Float64Ieee => 8,
+    for cal in &mut *calibrations {
+        if cal.address.is_some() && cal.dtype.is_some() && cal.size.is_some() && cal.dim.is_some() {
+            let a = cal.address.unwrap() as usize;
+            let s = cal.size.unwrap() as usize;
+            let d = cal.dim.unwrap() as usize;
+            let range = a..a + (s * d);
+            let val = binfile.get_values_by_address_range(range);
+            if let Some(val_vec) = val {
+                match datatype::bytes_to_text(&val_vec, cal.dtype.as_ref().unwrap(), d) {
+                    Ok(x) => {
+                        if verbose > 0 { log_msgs.push(format!("CAL: {}: {}", &cal.symbol, &x)); }
+                        cal.value_repr = Some(x)
+                    },
+                    Err(e) => log_msgs.push(format!("ERROR decoding {}: {}", &cal.symbol, &e)),
                 }
-            };
-        };
-        let range = a as usize..a as usize + (s * dim) as usize;
-        let val = binfile.get_values_by_address_range(range);
-        println!("{k} 0x{a:08x} {t:?} -> {val:?}");
+            } else {
+                log_msgs.push(format!("ERROR reading {}", &cal.symbol));
+            }
+        }
     }
 
+    Ok(true)
+}
+
+fn write_calibration(
+    calibrations: &Vec<Calibration>,
+    binfile: &mut BinFile,
+    verbose: u8,
+    log_msgs: &mut Vec<String>,
+) -> Result<bool, String> {
+
+    for cal in calibrations {
+        if cal.address.is_some() && cal.dtype.is_some() && cal.size.is_some() && cal.dim.is_some() && cal.value_repr.is_some() {
+            let a = cal.address.unwrap() as usize;
+            let d = cal.dim.unwrap() as usize;
+            match datatype::text_to_bytes(&cal.value_repr.as_ref().unwrap(), cal.dtype.as_ref().unwrap(), d) {
+                Ok(val) => {
+                        if verbose > 0 { log_msgs.push(format!("CAL: {}: {}", &cal.symbol, &cal.value_repr.as_ref().unwrap())); }
+                        let _ = binfile.add_bytes(val, Some(a), true);
+                },
+                Err(e) => log_msgs.push(format!("ERROR encoding {}: {}", &cal.symbol, &e))
+            }
+        } else {
+            log_msgs.push(format!("ERROR writing {}", &cal.symbol));
+        }
+    }
+
+    Ok(true)
+}
+
+fn guess_binfile_format(binary_file: &OsString) -> (Option<BinFileFormat>, Option<SRecordAddressLength>, Option<IHexFormat>) {
+    let mut binfile_format: Option<BinFileFormat> = None;
+    let mut srec_addr_len: Option<SRecordAddressLength> = None;
+    let mut ihex_format: Option<IHexFormat> = None;
+
+    if let Some(ext) = Path::new(binary_file).extension().and_then(|ext| ext.to_str()) {
+        let ext_lower = ext.to_lowercase();
+
+        match ext_lower.as_str() {
+            "srec" | "s19" | "s28" | "s37" => {
+                binfile_format = Some(BinFileFormat::SREC);
+                srec_addr_len = Some(SRecordAddressLength::Length32);
+            },
+            "hex" | "ihex" => {
+                binfile_format = Some(BinFileFormat::IHEX);
+                ihex_format = Some(IHexFormat::IHex32);
+            },
+            _ => {}
+        };
+    }
+
+    (binfile_format, srec_addr_len, ihex_format)
+}
+
+fn save_binfile(
+    binary_file: &OsString,
+    binfile: &BinFile,
+    _verbose: u8,
+    _log_msgs: &mut Vec<String>,
+) -> Result<bool, String> {
+
+    let (binfile_format, srec_addr_len, ihex_format) = guess_binfile_format(binary_file);
+
+    let text: Vec<String> = match binfile_format {
+        Some(BinFileFormat::SREC) => {
+            binfile.to_srec(None, srec_addr_len.unwrap_or(SRecordAddressLength::Length32)).unwrap()
+        },
+        Some(BinFileFormat::IHEX) => {
+            binfile.to_ihex(None, ihex_format.unwrap_or(IHexFormat::IHex32)).unwrap()
+        },
+        _ => { return Err(String::from("Unrecognized binary file format")); }
+    };
+
+    let mut file = File::create(binary_file).expect("Error opening binary file for write");
+    for line in text {
+        writeln!(file, "{}", line).expect("Error writing binary file");
+    }
 
     Ok(true)
 }
@@ -662,10 +856,34 @@ fn get_args() -> ArgMatches {
         .action(clap::ArgAction::SetTrue)
     )
     .arg(Arg::new("CALIBRATE")
-        .help("")
+        .help("Read of write calibrations in a binary file")
         .long("calibrate")
         .number_of_values(0)
         .action(clap::ArgAction::SetTrue)
+    )
+    .arg(Arg::new("CALIB_READ")
+        .help("CSV file containing the symbols to read from binary. The CSV file will be updated with the values read from the binary.")
+        .short('r')
+        .long("readcal")
+        .number_of_values(1)
+        .value_name("CSVFILE")
+        .value_parser(ValueParser::os_string())
+    )
+    .arg(Arg::new("CALIB_WRITE")
+        .help("CSV file containing the symbols to write to binary. The binary file will be updated with the values from the CSV.")
+        .short('w')
+        .long("writecal")
+        .number_of_values(1)
+        .value_name("CSVFILE")
+        .value_parser(ValueParser::os_string())
+    )
+    .arg(Arg::new("BINARY")
+        .help("Binary file (srecord, HEX, etc.)")
+        .short('b')
+        .long("binary")
+        .number_of_values(1)
+        .value_name("BINARY")
+        .value_parser(ValueParser::os_string())
     )
     .arg(Arg::new("ELFFILE")
         .help("Elf file containing symbols and address information")

@@ -1,10 +1,11 @@
 use a2lfile::{A2lFile, Characteristic, Measurement, RecordLayout};
 use std::collections::HashMap;
 
-pub(crate) fn search_measurements<'a>(
+#[allow(dead_code)]
+pub(crate) fn _search_measurements<'a>(
     a2l_file: &'a A2lFile,
     regex_strings: &[&str],
-    log_messages: &mut Vec<String>,
+    _log_messages: &mut Vec<String>,
 ) -> HashMap<&'a String, &'a Measurement> {
     let mut found = HashMap::new();
 
@@ -38,7 +39,7 @@ pub(crate) fn search_measurements<'a>(
 pub(crate) fn search_characteristics<'a>(
     a2l_file: &'a A2lFile,
     regex_strings: &[&str],
-    log_messages: &mut Vec<String>,
+    _log_messages: &mut Vec<String>,
 ) -> HashMap<&'a String, &'a Characteristic> {
     let mut found = HashMap::new();
 
@@ -72,7 +73,7 @@ pub(crate) fn search_characteristics<'a>(
 pub(crate) fn search_reord_layout<'a>(
     a2l_file: &'a A2lFile,
     regex_strings: &[&str],
-    log_messages: &mut Vec<String>,
+    _log_messages: &mut Vec<String>,
 ) -> HashMap<&'a String, &'a RecordLayout> {
     let mut found = HashMap::new();
 
