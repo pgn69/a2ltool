@@ -1,6 +1,6 @@
 use clap::{builder::ValueParser, parser::ValuesRef, Arg, ArgGroup, ArgMatches, Command};
 
-use a2lfile::{A2lError, A2lFile, A2lObject, DataType};
+use a2lfile::{A2lError, A2lFile, A2lObject, DataType, ByteOrderEnum, CharacteristicType, AddrType};
 use dwarf::DebugData;
 use std::{
     ffi::{OsStr, OsString}, fmt::Display, fs::File, io::Write, path::Path, time::Instant
@@ -43,6 +43,7 @@ struct Calibration {
     size: Option<u16>,
     dim: Option<u16>,
     dtype: Option<DataType>,
+    endianess: ByteOrderEnum,
 }
 
 macro_rules! cond_print {
@@ -510,17 +511,24 @@ fn core() -> Result<(), String> {
     // caltool
     if calibrate {
         let mut log_msgs: Vec<String> = Vec::new();
+        let guessed_default_endianess = guess_default_endianess(&a2l_file, &elf_info);
+        let default_endianess = if let Some(endianess) = arg_matches.get_one("DEAFULT_BYTE_ORDER").or(guessed_default_endianess.as_ref()) {
+            endianess
+        } else {
+            return Err(String::from("Cannot detect a defaul BYTE_ORDER. Specify the --default_byte_order on the command line."));
+        };
+        log_msgs.push(format!("Using default byte order {}", default_endianess));
 
         if let Some(binary_file) = arg_matches.get_one::<OsString>("BINARY") {
             let mut binfile = BinFile::from_file(binary_file).unwrap();
             if let Some(csv_file) = arg_matches.get_one::<OsString>("CALIB_WRITE") {
-                let mut calibrations = read_calibrations_csv(csv_file);
+                let mut calibrations = read_calibrations_csv(csv_file, &default_endianess);
                 calibration_symbols_load(&mut calibrations, &mut a2l_file, elf_info, enable_structures, &mut log_msgs)?;
                 write_calibration(&calibrations, &mut binfile, verbose, &mut log_msgs)?;
                 save_binfile(&binary_file, &binfile, verbose, &mut log_msgs)?;
 
             } else if let Some(csv_file) = arg_matches.get_one::<OsString>("CALIB_READ") {
-                let mut calibrations = read_calibrations_csv(csv_file);
+                let mut calibrations = read_calibrations_csv(csv_file, &default_endianess);
                 calibration_symbols_load(&mut calibrations, &mut a2l_file, elf_info, enable_structures, &mut log_msgs)?;
                 read_calibration(&mut calibrations, &binfile, verbose, &mut log_msgs)?;
                 write_calibrations_csv(csv_file, &calibrations)?;
@@ -537,7 +545,31 @@ fn core() -> Result<(), String> {
     Ok(())
 }
 
-fn read_calibrations_csv(csv_file: &OsString) -> Vec<Calibration> {
+fn guess_default_endianess(a2l_file: &A2lFile, elf_info: &Option<DebugData>) -> Option<ByteOrderEnum> {
+    let mut default_order = None;
+    for module in &a2l_file.project.module {
+        if let Some(mod_common) = &module.mod_common {
+            if let Some(byte_order) = &mod_common.byte_order {
+                if default_order.is_none() {
+                    default_order = Some(byte_order.byte_order.clone());
+                } else if byte_order.byte_order != default_order.unwrap() {
+                    panic!("Mixed BYTE_ORDER in MOD_COMMON not supported. Specify the --default_byte_order on the command line.")
+                }
+            }
+        }
+    }
+    if default_order.is_none() {
+        if let Some(debugdata) = elf_info {
+            default_order = match debugdata.endian {
+                object::Endianness::Little => Some(ByteOrderEnum::LittleEndian),
+                object::Endianness::Big => Some(ByteOrderEnum::BigEndian),
+            };
+        }
+    }
+    default_order
+}
+
+fn read_calibrations_csv(csv_file: &OsString, default_endianess: &ByteOrderEnum) -> Vec<Calibration> {
     let mut ret: Vec<Calibration> = Vec::new();
     let text = std::fs::read_to_string(csv_file).expect("Cannot read CSV file");
 
@@ -546,7 +578,7 @@ fn read_calibrations_csv(csv_file: &OsString) -> Vec<Calibration> {
         if fields.len() > 0 {
             let f = fields[0].trim();
             if f.len() > 0 && ! f.starts_with("#") {
-                let mut cal = Calibration {symbol: f.to_string(), value_repr: None, address: None, size: None, dim: None, dtype: None };
+                let mut cal = Calibration {symbol: f.to_string(), value_repr: None, address: None, size: None, dim: None, dtype: None, endianess: default_endianess.clone() };
                 if fields.len() > 1 {
                     let f = fields[1].trim();
                     if f.len() > 0 {
@@ -628,15 +660,34 @@ fn calibration_symbols_load(
     for cal in &mut *calibrations {
         if let Some(characteristic) = characteristics.get(&cal.symbol) {
             cal.address = Some(characteristic.address);
-            if let Some(matrix_dim) = &characteristic.matrix_dim {
-                cal.dim = Some(matrix_dim.dim_list.iter().product());
-            } else {
-                cal.dim = Some(1);
+            if characteristic.byte_order.is_some() { cal.endianess = characteristic.byte_order.as_ref().unwrap().byte_order; }
+            match characteristic.characteristic_type {
+                CharacteristicType::Value => {
+                    cal.dim = Some(1);
+                },
+                CharacteristicType::ValBlk => {
+                    if let Some(matrix_dim) = &characteristic.matrix_dim {
+                        cal.dim = Some(matrix_dim.dim_list.iter().product());
+                    } else {
+                        log_msgs.push(format!("Characteristic {} matrix dimension not found", &cal.symbol));
+                        continue;
+                    }
+                },
+                _ => {
+                    log_msgs.push(format!("Characteristic {} type {} not supported", &cal.symbol, &characteristic.characteristic_type));
+                    continue;
+                }
             }
             if let Some(rl) = record_layouts.get(&characteristic.deposit) {
                 if let Some(fnc_value) = &rl.fnc_values {
-                    cal.size = Some(datatype::get_datatype_size(&fnc_value.datatype));
-                    cal.dtype = Some(fnc_value.datatype);
+                    if fnc_value.position == 1 && fnc_value.address_type == AddrType::Direct {
+                        cal.size = Some(datatype::get_datatype_size(&fnc_value.datatype));
+                        cal.dtype = Some(fnc_value.datatype);
+                    } else {
+                        log_msgs.push(format!("Characteristic {} record layout not supported", &cal.symbol));
+                    }
+                } else {
+                    log_msgs.push(format!("Characteristic {} data type not found", &cal.symbol));
                 };
             };
         } else {
@@ -655,6 +706,7 @@ fn read_calibration(
 ) -> Result<bool, String> {
 
     for cal in &mut *calibrations {
+        cal.value_repr = None;
         if cal.address.is_some() && cal.dtype.is_some() && cal.size.is_some() && cal.dim.is_some() {
             let a = cal.address.unwrap() as usize;
             let s = cal.size.unwrap() as usize;
@@ -662,7 +714,7 @@ fn read_calibration(
             let range = a..a + (s * d);
             let val = binfile.get_values_by_address_range(range);
             if let Some(val_vec) = val {
-                match datatype::bytes_to_text(&val_vec, cal.dtype.as_ref().unwrap(), d) {
+                match datatype::bytes_to_text(&val_vec, cal.dtype.as_ref().unwrap(), d, &cal.endianess) {
                     Ok(x) => {
                         if verbose > 0 { log_msgs.push(format!("CAL: {}: {}", &cal.symbol, &x)); }
                         cal.value_repr = Some(x)
@@ -689,7 +741,7 @@ fn write_calibration(
         if cal.address.is_some() && cal.dtype.is_some() && cal.size.is_some() && cal.dim.is_some() && cal.value_repr.is_some() {
             let a = cal.address.unwrap() as usize;
             let d = cal.dim.unwrap() as usize;
-            match datatype::text_to_bytes(&cal.value_repr.as_ref().unwrap(), cal.dtype.as_ref().unwrap(), d) {
+            match datatype::text_to_bytes(&cal.value_repr.as_ref().unwrap(), cal.dtype.as_ref().unwrap(), d, &cal.endianess) {
                 Ok(val) => {
                         if verbose > 0 { log_msgs.push(format!("CAL: {}: {}", &cal.symbol, &cal.value_repr.as_ref().unwrap())); }
                         let _ = binfile.add_bytes(val, Some(a), true);
@@ -829,6 +881,28 @@ fn load_or_create_a2l(
     } else {
         // shouldn't be able to get here, the clap config requires either INPUT or CREATE
         Err("impossible: no input filename and no --create nor --calibrate".to_string())
+    }
+}
+
+#[derive(Clone)]
+struct ByteOrderEnumParser;
+
+impl clap::builder::TypedValueParser for ByteOrderEnumParser {
+    type Value = ByteOrderEnum;
+
+    fn parse_ref(
+        &self,
+        _cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        match value.to_str().unwrap_or_default() {
+            "MSB_FIRST" => Ok(ByteOrderEnum::MsbFirst),
+            "MSB_LAST" => Ok(ByteOrderEnum::MsbLast),
+            "LITTLE_ENDIAN" => Ok(ByteOrderEnum::LittleEndian),
+            "BIG_ENDIAN" => Ok(ByteOrderEnum::BigEndian),
+            _ => Err(clap::Error::raw(clap::error::ErrorKind::ValueValidation, format!("Unknown {} value '{}'\n", _arg.unwrap(), value.to_str().unwrap_or_default())))
+        }
     }
 }
 
@@ -1099,6 +1173,15 @@ fn get_args() -> ArgMatches {
         .number_of_values(1)
         .value_name("REGEX")
         .action(clap::ArgAction::Append)
+    )
+    .arg(Arg::new("DEAFULT_BYTE_ORDER")
+        .help("Default byte order applied when not specified in the A2L file: MSB_LAST, MSB_FIRST, BIG_ENDIAN, LITTLE_ENDIAN.")
+        .long("default-byte-order")
+        .number_of_values(1)
+        // .value_parser(["MSB_LAST", "MSB_FIRST", "BIG_ENDIAN", "LITTLE_ENDIAN"])
+        .value_parser(ByteOrderEnumParser)
+        .requires("CALIBRATE")
+        .value_name("BYTE_ORDER")
     )
     .group(
         ArgGroup::new("INPUT_ARGGROUP")
