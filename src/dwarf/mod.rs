@@ -111,7 +111,10 @@ impl DebugData {
         let filedata = load_filedata(filename)?;
         let elffile = load_elf_file(&filename.to_string_lossy(), &filedata)?;
 
-        if elffile.sections().find(|section| section.name() == Ok(".debug_info")).is_none() {
+        if !elffile
+            .sections()
+            .any(|section| section.name() == Ok(".debug_info"))
+        {
             return Err(format!("Error: {} does not contain DWARF2+ debug info. The section .debug_info is missing.", filename.to_string_lossy()));
         }
 
@@ -993,6 +996,23 @@ mod test {
         for filename in ELF_FILE_NAMES {
             let debugdata = DebugData::load(OsStr::new(filename), true).unwrap();
             assert!(debugdata.endian == Endianness::Little);
+        }
+    }
+
+    #[test]
+    fn test_load_mingw_exe() {
+        // The file tests/elffiles/update_test.c was compiled with mingw64 gcc
+        // (update_test.exe) as well as with gcc for arm (update_test.elf).
+        // Both file contain the same debug information, though the windows exe
+        // file has some additional items from the starup code.
+        let debugdata_exe =
+            DebugData::load(OsStr::new("tests/elffiles/update_test.exe"), true).unwrap();
+        let debugdata_elf =
+            DebugData::load(OsStr::new("tests/elffiles/update_test.elf"), true).unwrap();
+
+        // every variable in the elf file should also be in the exe file
+        for var in debugdata_elf.variables.keys() {
+            assert!(debugdata_exe.variables.contains_key(var));
         }
     }
 }
