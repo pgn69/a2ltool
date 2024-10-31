@@ -515,12 +515,15 @@ fn core() -> Result<(), String> {
         let default_endianess = if let Some(endianess) = arg_matches.get_one("DEAFULT_BYTE_ORDER").or(guessed_default_endianess.as_ref()) {
             endianess
         } else {
-            return Err(String::from("Cannot detect a defaul BYTE_ORDER. Specify the --default_byte_order on the command line."));
+            return Err(String::from("Cannot detect a default BYTE_ORDER. Specify the --default_byte_order on the command line."));
         };
         log_msgs.push(format!("Using default byte order {}", default_endianess));
 
         if let Some(binary_file) = arg_matches.get_one::<OsString>("BINARY") {
-            let mut binfile = BinFile::from_file(binary_file).unwrap();
+            let mut binfile = match BinFile::from_file(binary_file) {
+                Ok(bf) => bf,
+                Err(e) => { return Err(format!("Error opening binary file. {}", e.to_string())); },
+            };
             if let Some(csv_file) = arg_matches.get_one::<OsString>("CALIB_WRITE") {
                 let mut calibrations = read_calibrations_csv(csv_file, &default_endianess);
                 calibration_symbols_load(&mut calibrations, &mut a2l_file, elf_info, enable_structures, &mut log_msgs)?;
