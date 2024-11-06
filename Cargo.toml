@@ -21,7 +21,7 @@ argfile = { version ="0.2.0", features=["response"]}
 bin_file = "0.1.1"
 
 [dev-dependencies]
-tempfile = "3.14.0"
+tempfile = "3.13"
 
 [profile.release]
 panic = "abort"
