@@ -16,8 +16,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build
       run: cargo build --release --verbose
-    - name: Test
-      run: cargo test
+    - name: Run tests
       env:
-        RUST_BACKTRACE: full
-
+        RUST_BACKTRACE: 1
+      run: cargo test
