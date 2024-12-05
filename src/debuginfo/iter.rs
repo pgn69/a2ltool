@@ -1,4 +1,4 @@
-use crate::dwarf::{DebugData, DwarfDataType, TypeInfo, VarInfo};
+use crate::debuginfo::{DbgDataType, DebugData, TypeInfo, VarInfo};
 use crate::symbol::SymbolInfo;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -52,9 +52,9 @@ impl<'dbg> TypeInfoIter<'dbg> {
 
     fn next_core(&mut self) -> Option<(String, &'dbg TypeInfo, u64)> {
         match &self.type_stack.last()?.datatype {
-            DwarfDataType::Class { members, .. }
-            | DwarfDataType::Struct { members, .. }
-            | DwarfDataType::Union { members, .. } => {
+            DbgDataType::Class { members, .. }
+            | DbgDataType::Struct { members, .. }
+            | DbgDataType::Union { members, .. } => {
                 let depth = self.type_stack.len() - 1;
                 let position = self.position_stack[depth];
                 let base = self.offset_stack[depth];
@@ -76,7 +76,7 @@ impl<'dbg> TypeInfoIter<'dbg> {
 
                 Some((fullname, member_typeinfo, complete_offset))
             }
-            DwarfDataType::Array {
+            DbgDataType::Array {
                 size,
                 dim,
                 stride,
@@ -211,7 +211,7 @@ impl<'dbg> VariablesIterator<'dbg> {
     const DEFAULT_TYPEINFO: TypeInfo = TypeInfo {
         name: None,
         unit_idx: usize::MAX,
-        datatype: DwarfDataType::Sint16,
+        datatype: DbgDataType::Sint16,
         dbginfo_offset: 0,
     };
 
@@ -249,7 +249,7 @@ mod test {
     const DEFAULT_TYPEINFO: TypeInfo = TypeInfo {
         name: None,
         unit_idx: usize::MAX,
-        datatype: DwarfDataType::Sint16,
+        datatype: DbgDataType::Sint16,
         dbginfo_offset: 0,
     };
 
@@ -258,7 +258,7 @@ mod test {
         // basic types, e.g. Sint<x> and Uint<x> cannot be iterated over
         // a TypeInfoIter for these immediately returns None
         let typeinfo = TypeInfo {
-            datatype: DwarfDataType::Sint16,
+            datatype: DbgDataType::Sint16,
             ..DEFAULT_TYPEINFO.clone()
         };
         let types = HashMap::new();
@@ -269,11 +269,11 @@ mod test {
         // a struct iterates over all of its members
         let mut types = HashMap::new();
         let t_uint64 = TypeInfo {
-            datatype: DwarfDataType::Uint64,
+            datatype: DbgDataType::Uint64,
             ..DEFAULT_TYPEINFO.clone()
         };
         let t_sint8 = TypeInfo {
-            datatype: DwarfDataType::Uint64,
+            datatype: DbgDataType::Uint64,
             ..DEFAULT_TYPEINFO.clone()
         };
         let mut structmembers_a: IndexMap<String, (TypeInfo, u64)> = IndexMap::new();
@@ -283,7 +283,7 @@ mod test {
         structmembers_a.insert("structmember_4".to_string(), (t_uint64.clone(), 0));
         structmembers_a.insert("structmember_5".to_string(), (t_uint64.clone(), 0));
         let typeinfo_inner_1 = TypeInfo {
-            datatype: DwarfDataType::Struct {
+            datatype: DbgDataType::Struct {
                 size: 64,
                 members: structmembers_a,
             },
@@ -294,7 +294,7 @@ mod test {
         structmembers_b.insert("foobar_2".to_string(), (t_sint8.clone(), 0));
         structmembers_b.insert("foobar_3".to_string(), (t_sint8.clone(), 0));
         let typeinfo_inner_2 = TypeInfo {
-            datatype: DwarfDataType::Struct {
+            datatype: DbgDataType::Struct {
                 size: 64,
                 members: structmembers_b,
             },
@@ -303,18 +303,18 @@ mod test {
         types.insert(100, typeinfo_inner_1);
         types.insert(101, typeinfo_inner_2);
         let typeref_inner_1 = TypeInfo {
-            datatype: DwarfDataType::TypeRef(100, 0),
+            datatype: DbgDataType::TypeRef(100, 0),
             ..DEFAULT_TYPEINFO.clone()
         };
         let typeref_inner_2 = TypeInfo {
-            datatype: DwarfDataType::TypeRef(101, 0),
+            datatype: DbgDataType::TypeRef(101, 0),
             ..DEFAULT_TYPEINFO.clone()
         };
         let mut structmembers: IndexMap<String, (TypeInfo, u64)> = IndexMap::new();
         structmembers.insert("inner_a".to_string(), (typeref_inner_1, 0));
         structmembers.insert("inner_b".to_string(), (typeref_inner_2, 0));
         let typeinfo = TypeInfo {
-            datatype: DwarfDataType::Struct {
+            datatype: DbgDataType::Struct {
                 size: 64,
                 members: structmembers,
             },
@@ -379,14 +379,14 @@ mod test {
 
         let mut types = HashMap::<usize, TypeInfo>::new();
         let t_uint8 = TypeInfo {
-            datatype: DwarfDataType::Uint8,
+            datatype: DbgDataType::Uint8,
             ..DEFAULT_TYPEINFO.clone()
         };
         let mut structmembers: IndexMap<String, (TypeInfo, u64)> = IndexMap::new();
         structmembers.insert("member_1".to_string(), (t_uint8.clone(), 0));
         structmembers.insert("member_2".to_string(), (t_uint8.clone(), 1));
         let structtype = TypeInfo {
-            datatype: DwarfDataType::Struct {
+            datatype: DbgDataType::Struct {
                 size: 64,
                 members: structmembers,
             },
@@ -412,7 +412,7 @@ mod test {
         let mut count = 0;
         while let Some(sym_info) = current {
             count += 1;
-            if matches!(&sym_info.typeinfo.datatype, DwarfDataType::Struct { .. }) {
+            if matches!(&sym_info.typeinfo.datatype, DbgDataType::Struct { .. }) {
                 current = iter.next_sibling();
             } else {
                 current = iter.next();
