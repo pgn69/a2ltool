@@ -1,5 +1,5 @@
 use super::{attributes::*, DebugDataReader};
-use super::{DwarfDataType, TypeInfo, VarInfo};
+use super::{DbgDataType, TypeInfo, VarInfo};
 use gimli::{DebugInfoOffset, DwTag, EndianSlice, EntriesTreeNode, RunTimeEndian, UnitOffset};
 use indexmap::IndexMap;
 use object::Endianness;
@@ -79,7 +79,7 @@ impl DebugDataReader<'_> {
                 // for example, this could result in a struct where one member is unusable, but any others could still be OK
                 typereader_data.wip_items.truncate(wip_items_orig_len);
                 let replacement_type = TypeInfo {
-                    datatype: DwarfDataType::Other(0),
+                    datatype: DbgDataType::Other(0),
                     name: typereader_data
                         .wip_items
                         .last()
@@ -121,7 +121,7 @@ impl DebugDataReader<'_> {
             // e.g. "struct foo;" in a header file.
             // We can't do anything with this - return a dummy type, and don't store it in the types map.
             return Ok(TypeInfo {
-                datatype: DwarfDataType::Other(0),
+                datatype: DbgDataType::Other(0),
                 name: typename,
                 unit_idx: current_unit,
                 dbginfo_offset: dbginfo_offset.0,
@@ -158,18 +158,18 @@ impl DebugDataReader<'_> {
                         // e.g pointer -> const -> volatile -> typedef (name comes from here!) -> any
                         let name = typereader_data.get_pointer_name(idx);
                         (
-                            DwarfDataType::Pointer(
+                            DbgDataType::Pointer(
                                 u64::from(unit.encoding().address_size),
-                                ptype_offset,
+                                ptype_offset.0,
                             ),
                             name.clone(),
                         )
                     } else {
                         let pt_type = self.get_type(new_cur_unit, ptype_offset, typereader_data)?;
                         (
-                            DwarfDataType::Pointer(
+                            DbgDataType::Pointer(
                                 u64::from(unit.encoding().address_size),
-                                ptype_offset,
+                                ptype_offset.0,
                             ),
                             pt_type.name,
                         )
@@ -177,10 +177,7 @@ impl DebugDataReader<'_> {
                 } else {
                     // void*
                     (
-                        DwarfDataType::Pointer(
-                            u64::from(unit.encoding().address_size),
-                            DebugInfoOffset(0),
-                        ),
+                        DbgDataType::Pointer(u64::from(unit.encoding().address_size), 0),
                         Some("void".to_string()),
                     )
                 }
@@ -189,9 +186,10 @@ impl DebugDataReader<'_> {
             gimli::constants::DW_TAG_array_type => {
                 self.get_array_type(entry, current_unit, offset, typereader_data)?
             }
-            gimli::constants::DW_TAG_enumeration_type => {
-                (self.get_enumeration_type(current_unit, offset)?, None)
-            }
+            gimli::constants::DW_TAG_enumeration_type => (
+                self.get_enumeration_type(current_unit, offset, typereader_data)?,
+                None,
+            ),
             gimli::constants::DW_TAG_structure_type => {
                 let size = get_byte_size_attribute(entry)
                     .ok_or_else(|| "missing struct byte size attribute".to_string())?;
@@ -200,7 +198,7 @@ impl DebugDataReader<'_> {
                     current_unit,
                     typereader_data,
                 )?;
-                (DwarfDataType::Struct { size, members }, None)
+                (DbgDataType::Struct { size, members }, None)
             }
             gimli::constants::DW_TAG_class_type => (
                 self.get_class_type(current_unit, offset, typereader_data)?,
@@ -214,7 +212,7 @@ impl DebugDataReader<'_> {
                     current_unit,
                     typereader_data,
                 )?;
-                (DwarfDataType::Union { size, members }, None)
+                (DbgDataType::Union { size, members }, None)
             }
             gimli::constants::DW_TAG_typedef => {
                 let (new_cur_unit, dbginfo_offset) =
@@ -238,7 +236,7 @@ impl DebugDataReader<'_> {
                 } else {
                     // const void* / volatile void* / packed void*???
                     (
-                        DwarfDataType::Other(u64::from(unit.encoding().address_size)),
+                        DbgDataType::Other(u64::from(unit.encoding().address_size)),
                         None,
                     )
                 }
@@ -246,14 +244,14 @@ impl DebugDataReader<'_> {
             gimli::constants::DW_TAG_subroutine_type => {
                 // function pointer
                 (
-                    DwarfDataType::FuncPtr(u64::from(unit.encoding().address_size)),
+                    DbgDataType::FuncPtr(u64::from(unit.encoding().address_size)),
                     Some("p_function".to_string()),
                 )
             }
             gimli::constants::DW_TAG_unspecified_type => {
                 // ?
                 (
-                    DwarfDataType::Other(get_byte_size_attribute(entry).unwrap_or(0)),
+                    DbgDataType::Other(get_byte_size_attribute(entry).unwrap_or(0)),
                     None,
                 )
             }
@@ -301,7 +299,7 @@ impl DebugDataReader<'_> {
         current_unit: usize,
         offset: UnitOffset,
         typereader_data: &mut TypeReaderData,
-    ) -> Result<(DwarfDataType, Option<String>), String> {
+    ) -> Result<(DbgDataType, Option<String>), String> {
         let (unit, abbrev) = &self.units[current_unit];
         let mut entries_tree = unit
             .entries_tree(abbrev, Some(offset))
@@ -362,7 +360,7 @@ impl DebugDataReader<'_> {
         }
         let size = maybe_size.unwrap_or_else(|| dim.iter().fold(stride, |acc, num| acc * num));
         Ok((
-            DwarfDataType::Array {
+            DbgDataType::Array {
                 dim,
                 arraytype: Box::new(arraytype),
                 size,
@@ -376,7 +374,8 @@ impl DebugDataReader<'_> {
         &self,
         current_unit: usize,
         offset: UnitOffset,
-    ) -> Result<DwarfDataType, String> {
+        typereader_data: &mut TypeReaderData,
+    ) -> Result<DbgDataType, String> {
         let (unit, abbrev) = &self.units[current_unit];
         let mut entries_tree = unit
             .entries_tree(abbrev, Some(offset))
@@ -384,10 +383,34 @@ impl DebugDataReader<'_> {
         let entries_tree_node = entries_tree.root().map_err(|err| err.to_string())?;
         let entry = entries_tree_node.entry();
 
-        let size = get_byte_size_attribute(entry)
-            .ok_or_else(|| "missing enum byte size attribute".to_string())?;
+        let opt_size = get_byte_size_attribute(entry);
         let mut enumerators = Vec::new();
         let (unit, _) = &self.units[current_unit];
+
+        // The enumeration type entry may have a DW_AT_type attribute which refers to the underlying
+        // data type used to implement the enumeration
+        let (signed, opt_ut_size) = if let Ok(utype) =
+            get_type_attribute(entry, &self.units, current_unit).and_then(
+                |(utype_unit, utype_dbginfo_offset)| {
+                    self.get_type(utype_unit, utype_dbginfo_offset, typereader_data)
+                },
+            ) {
+            // get size and signedness of the underlying type
+            let signed = matches!(
+                utype.datatype,
+                DbgDataType::Sint8
+                    | DbgDataType::Sint16
+                    | DbgDataType::Sint32
+                    | DbgDataType::Sint64
+            );
+            (signed, Some(utype.get_size()))
+        } else {
+            (false, None)
+        };
+        // if no byte size is given, use the size of the underlying type
+        let size = opt_size
+            .or(opt_ut_size)
+            .ok_or_else(|| "missing enum byte size attribute".to_string())?;
 
         let mut iter = entries_tree_node.children();
         while let Ok(Some(child_node)) = iter.next() {
@@ -400,7 +423,11 @@ impl DebugDataReader<'_> {
                 enumerators.push((name, value));
             }
         }
-        Ok(DwarfDataType::Enum { size, enumerators })
+        Ok(DbgDataType::Enum {
+            size,
+            signed,
+            enumerators,
+        })
     }
 
     fn get_class_type(
@@ -408,7 +435,7 @@ impl DebugDataReader<'_> {
         current_unit: usize,
         offset: UnitOffset,
         typereader_data: &mut TypeReaderData,
-    ) -> Result<DwarfDataType, String> {
+    ) -> Result<DbgDataType, String> {
         let (unit, abbrev) = &self.units[current_unit];
         let mut entries_tree = unit
             .entries_tree(abbrev, Some(offset))
@@ -428,8 +455,10 @@ impl DebugDataReader<'_> {
             .unwrap_or_default();
         let mut members =
             self.get_struct_or_union_members(entries_tree_node, current_unit, typereader_data)?;
+        // copy all inherited members from the base classes
+        // this allows the inherited members ot be accessed without naming the base class
         for (baseclass_type, baseclass_offset) in inheritance.values() {
-            if let DwarfDataType::Class {
+            if let DbgDataType::Class {
                 members: baseclass_members,
                 ..
             } = &baseclass_type.datatype
@@ -442,7 +471,7 @@ impl DebugDataReader<'_> {
                 }
             }
         }
-        Ok(DwarfDataType::Class {
+        Ok(DbgDataType::Class {
             size,
             inheritance,
             members,
@@ -491,7 +520,7 @@ impl DebugDataReader<'_> {
                                 name: membertype.name.clone(),
                                 unit_idx: membertype.unit_idx,
                                 dbginfo_offset,
-                                datatype: DwarfDataType::Bitfield {
+                                datatype: DbgDataType::Bitfield {
                                     basetype: Box::new(membertype),
                                     bit_size: bit_size as u16,
                                     bit_offset: bit_offset_le as u16,
@@ -521,7 +550,7 @@ impl DebugDataReader<'_> {
                                 name: membertype.name.clone(),
                                 unit_idx: membertype.unit_idx,
                                 dbginfo_offset,
-                                datatype: DwarfDataType::Bitfield {
+                                datatype: DbgDataType::Bitfield {
                                     basetype: Box::new(membertype),
                                     bit_size: bit_size as u16,
                                     bit_offset: data_bit_offset as u16,
@@ -534,11 +563,11 @@ impl DebugDataReader<'_> {
                         // "int :31;" is valid C!
                         if !name.is_empty() {
                             // refer to the loaded type instead of duplicating it in the members
-                            if matches!(membertype.datatype, DwarfDataType::Struct { .. })
-                                || matches!(membertype.datatype, DwarfDataType::Union { .. })
-                                || matches!(membertype.datatype, DwarfDataType::Class { .. })
+                            if matches!(membertype.datatype, DbgDataType::Struct { .. })
+                                || matches!(membertype.datatype, DbgDataType::Union { .. })
+                                || matches!(membertype.datatype, DbgDataType::Class { .. })
                             {
-                                membertype.datatype = DwarfDataType::TypeRef(
+                                membertype.datatype = DbgDataType::TypeRef(
                                     new_dbginfo_offset.0,
                                     membertype.get_size(),
                                 );
@@ -549,15 +578,15 @@ impl DebugDataReader<'_> {
                         // no name: the member is an anon struct / union
                         // In this case, the contained members are transferred
                         match membertype.datatype {
-                            DwarfDataType::Class {
+                            DbgDataType::Class {
                                 members: anon_members,
                                 ..
                             }
-                            | DwarfDataType::Struct {
+                            | DbgDataType::Struct {
                                 members: anon_members,
                                 ..
                             }
-                            | DwarfDataType::Union {
+                            | DbgDataType::Union {
                                 members: anon_members,
                                 ..
                             } => {
@@ -619,7 +648,7 @@ impl DebugDataReader<'_> {
 fn get_base_type(
     entry: &gimli::DebuggingInformationEntry<EndianSlice<RunTimeEndian>, usize>,
     unit: &gimli::UnitHeader<EndianSlice<RunTimeEndian>>,
-) -> (DwarfDataType, String) {
+) -> (DbgDataType, String) {
     let byte_size = get_byte_size_attribute(entry).unwrap_or(1u64);
     let encoding = get_encoding_attribute(entry).unwrap_or(gimli::constants::DW_ATE_unsigned);
     match encoding {
@@ -627,34 +656,34 @@ fn get_base_type(
             // if compilers use DW_TAG_base_type with DW_AT_encoding = DW_ATE_address, then it is only used for void pointers
             // in all other cases DW_AT_pointer is used
             (
-                DwarfDataType::Pointer(u64::from(unit.encoding().address_size), DebugInfoOffset(0)),
+                DbgDataType::Pointer(u64::from(unit.encoding().address_size), 0),
                 "unknown".to_string(),
             )
         }
         gimli::constants::DW_ATE_float => {
             if byte_size == 8 {
-                (DwarfDataType::Double, "double".to_string())
+                (DbgDataType::Double, "double".to_string())
             } else {
-                (DwarfDataType::Float, "float".to_string())
+                (DbgDataType::Float, "float".to_string())
             }
         }
         gimli::constants::DW_ATE_signed | gimli::constants::DW_ATE_signed_char => match byte_size {
-            1 => (DwarfDataType::Sint8, "sint8".to_string()),
-            2 => (DwarfDataType::Sint16, "sint16".to_string()),
-            4 => (DwarfDataType::Sint32, "sint32".to_string()),
-            8 => (DwarfDataType::Sint64, "sint64".to_string()),
-            _ => (DwarfDataType::Other(byte_size), "double".to_string()),
+            1 => (DbgDataType::Sint8, "sint8".to_string()),
+            2 => (DbgDataType::Sint16, "sint16".to_string()),
+            4 => (DbgDataType::Sint32, "sint32".to_string()),
+            8 => (DbgDataType::Sint64, "sint64".to_string()),
+            _ => (DbgDataType::Other(byte_size), "double".to_string()),
         },
         gimli::constants::DW_ATE_boolean
         | gimli::constants::DW_ATE_unsigned
         | gimli::constants::DW_ATE_unsigned_char => match byte_size {
-            1 => (DwarfDataType::Uint8, "uint8".to_string()),
-            2 => (DwarfDataType::Uint16, "uint16".to_string()),
-            4 => (DwarfDataType::Uint32, "uint32".to_string()),
-            8 => (DwarfDataType::Uint64, "uint64".to_string()),
-            _ => (DwarfDataType::Other(byte_size), "other".to_string()),
+            1 => (DbgDataType::Uint8, "uint8".to_string()),
+            2 => (DbgDataType::Uint16, "uint16".to_string()),
+            4 => (DbgDataType::Uint32, "uint32".to_string()),
+            8 => (DbgDataType::Uint64, "uint64".to_string()),
+            _ => (DbgDataType::Other(byte_size), "other".to_string()),
         },
-        _other => (DwarfDataType::Other(byte_size), "other".to_string()),
+        _other => (DbgDataType::Other(byte_size), "other".to_string()),
     }
 }
 

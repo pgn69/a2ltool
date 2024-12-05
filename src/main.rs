@@ -2,7 +2,7 @@ use bin_file::BinFile;
 use clap::{builder::ValueParser, parser::ValuesRef, Arg, ArgGroup, ArgMatches, Command};
 
 use a2lfile::{A2lError, A2lFile, A2lObject, ByteOrderEnum};
-use dwarf::DebugData;
+use debuginfo::DebugData;
 use std::{
     ffi::{OsStr, OsString},
     fmt::Display,
@@ -12,7 +12,7 @@ use update::{UpdateMode, UpdateType};
 
 mod calibrate;
 mod datatype;
-mod dwarf;
+mod debuginfo;
 mod ifdata;
 mod insert;
 mod remove;
@@ -197,25 +197,33 @@ fn core(args: impl Iterator<Item = OsString>) -> Result<(), String> {
         return Err(format!("Error: The option --enable-structures requires input file version 1.7.1, but the current version is {current_version}"));
     }
 
-    // load elf
-    let elf_info = if let Some(elffile) = arg_matches.get_one::<OsString>("ELFFILE") {
-        let elf_info = DebugData::load(elffile, verbose > 0)?;
+    // load debuginfo from an elf or pdb file
+    let opt_elffile = arg_matches.get_one::<OsString>("ELFFILE");
+    let opt_pdbfile = arg_matches.get_one::<OsString>("PDBFILE");
+    let debuginfo = if let Some(elffile) = opt_elffile {
+        Some(DebugData::load_dwarf(elffile, verbose > 0)?)
+    } else if let Some(pdbfile) = opt_pdbfile {
+        Some(DebugData::load_pdb(pdbfile, verbose > 0)?)
+    } else {
+        None
+    };
+    // display statistics and debug data if requested
+    if let Some(debuginfo) = &debuginfo {
+        // either opt_elffile or opt_pdbfile must be present if debuginfo was loaded
+        let filename = opt_elffile.or(opt_pdbfile).unwrap();
         cond_print!(
             verbose,
             now,
             format!(
                 "Variables and types loaded from \"{}\": {} variables available",
-                elffile.to_string_lossy(),
-                elf_info.variables.len()
+                filename.to_string_lossy(),
+                debuginfo.variables.len()
             )
         );
         if debugprint {
-            println!("================\n{elf_info:#?}\n================\n");
+            println!("================\n{debuginfo:#?}\n================\n");
         }
-        Some(elf_info)
-    } else {
-        None
-    };
+    }
 
     // merge at the module level
     if let Some(merge_modules) = arg_matches.get_many::<OsString>("MERGEMODULE") {
@@ -300,7 +308,7 @@ fn core(args: impl Iterator<Item = OsString>) -> Result<(), String> {
         cond_print!(verbose, now, format!("Removed {} items", removed_count));
     }
 
-    if let Some(debugdata) = &elf_info {
+    if let Some(debugdata) = &debuginfo {
         // update addresses
         if let Some(update_type) = opt_update_type {
             let update_mode = arg_matches
@@ -704,6 +712,15 @@ fn parse_args(args: impl Iterator<Item = OsString>) -> ArgMatches {
         .value_name("ELFFILE")
         .value_parser(ValueParser::os_string())
         .alias("exefile")
+        .alias("elf")
+    )
+    .arg(Arg::new("PDBFILE")
+        .help("PDB file containig debugging information in Microsoft's Program Database format.")
+        .long("pdbfile")
+        .number_of_values(1)
+        .value_name("PDBFILE")
+        .value_parser(ValueParser::os_string())
+        .alias("pdb")
     )
     .arg(Arg::new("CHECK")
         .help("Perform additional consistency checks")
@@ -756,7 +773,7 @@ The arg --elffile must be present.")
         .num_args(0..=1)
         .action(clap::ArgAction::Append)
         .default_missing_value("FULL")
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
     )
     .arg(Arg::new("UPDATE_MODE")
         .help("Update the A2L file based on the elf file. Action can be one of:
@@ -769,7 +786,7 @@ The arg --update must be present.")
         .num_args(0..=1)
         .action(clap::ArgAction::Append)
         .default_missing_value("DEFAULT")
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
         .requires("UPDATE_TYPE")
     )
     .arg(Arg::new("SAFE_UPDATE")
@@ -784,7 +801,7 @@ The arg --update must be present.")
         .long("enable-structures")
         .number_of_values(0)
         .action(clap::ArgAction::SetTrue)
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
     )
     .arg(Arg::new("A2LVERSION")
         .help("Convert the input file to the given version (e.g. \"1.5.1\", \"1.6.0\", etc.). This is a lossy operation, which deletes incompatible information.")
@@ -845,7 +862,7 @@ The arg --update must be present.")
         .long("characteristic")
         .aliases(["insert-characteristic"])
         .number_of_values(1)
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
         .value_name("VAR")
         .action(clap::ArgAction::Append)
     )
@@ -854,7 +871,7 @@ The arg --update must be present.")
         .long("characteristic-range")
         .aliases(["insert-characteristic-range"])
         .number_of_values(2)
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
         .value_name("RANGE")
         .value_parser(AddressValueParser)
         .action(clap::ArgAction::Append)
@@ -864,7 +881,7 @@ The arg --update must be present.")
         .long("characteristic-regex")
         .aliases(["insert-characteristic-regex"])
         .number_of_values(1)
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
         .value_name("REGEX")
         .action(clap::ArgAction::Append)
     )
@@ -873,7 +890,7 @@ The arg --update must be present.")
         .long("characteristic-section")
         .aliases(["insert-characteristic-section"])
         .number_of_values(1)
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
         .value_name("SECTION")
         .action(clap::ArgAction::Append)
     )
@@ -883,7 +900,7 @@ The arg --update must be present.")
         .long("measurement")
         .aliases(["insert-measurement"])
         .number_of_values(1)
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
         .value_name("VAR")
         .action(clap::ArgAction::Append)
     )
@@ -892,7 +909,7 @@ The arg --update must be present.")
         .long("measurement-range")
         .aliases(["insert-measurement-range"])
         .number_of_values(2)
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
         .value_name("RANGE")
         .value_parser(AddressValueParser)
         .action(clap::ArgAction::Append)
@@ -902,7 +919,7 @@ The arg --update must be present.")
         .long("measurement-regex")
         .aliases(["insert-measurement-regex"])
         .number_of_values(1)
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
         .value_name("REGEX")
         .action(clap::ArgAction::Append)
     )
@@ -911,7 +928,7 @@ The arg --update must be present.")
         .long("measurement-section")
         .aliases(["insert-measurement-section"])
         .number_of_values(1)
-        .requires("ELFFILE")
+        .requires("DEBUGINFO_ARGGROUP")
         .value_name("SECTION")
         .action(clap::ArgAction::Append)
     )
@@ -938,6 +955,11 @@ The arg --update must be present.")
         .value_parser(ByteOrderEnumParser)
         .requires("CALIBRATE")
         .value_name("BYTE_ORDER")
+    )
+    .group(
+        ArgGroup::new("DEBUGINFO_ARGGROUP")
+            .args(["ELFFILE", "PDBFILE"])
+            .multiple(false)
     )
     .group(
         ArgGroup::new("INPUT_ARGGROUP")
