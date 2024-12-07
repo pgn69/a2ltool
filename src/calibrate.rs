@@ -399,7 +399,7 @@ mod tests {
 
     #[test]
     fn test_read_calibrations_csv() {
-        let csv_file = OsString::from("tests/calibrate/cal_test_1.csv");
+        let csv_file = OsString::from("fixtures/calibrate/cal_test_1.csv");
         let default_endianess = ByteOrderEnum::LittleEndian;
         let calibrations = read_calibrations_csv(&csv_file, &default_endianess);
 
@@ -438,7 +438,7 @@ mod tests {
             },
         ];
 
-        let bin_file_path = OsString::from("tests/calibrate/cal_test_1.hex");
+        let bin_file_path = OsString::from("fixtures/calibrate/cal_test_1.hex");
         let binfile = BinFile::from_file(&bin_file_path).expect("Cannot read binary file");
         let mut log_msgs = Vec::new();
 
@@ -480,9 +480,9 @@ mod tests {
     #[test]
     fn calibrate_test() {
         let default_endianess = ByteOrderEnum::LittleEndian;
-        let a2l_path = OsString::from("tests/calibrate/cal_test_1.a2l");
-        let binary_start_path = OsString::from("tests/calibrate/cal_test_1.hex");
-        let csv_write_path = OsString::from("tests/calibrate/cal_test_1.csv");
+        let a2l_path = OsString::from("fixtures/calibrate/cal_test_1.a2l");
+        let binary_start_path = OsString::from("fixtures/calibrate/cal_test_1.hex");
+        let csv_write_path = OsString::from("fixtures/calibrate/cal_test_1.csv");
         let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
         let binary_end_path = OsString::from(tmp_dir.path().join("test.hex"));
         let csv_read_start_path = OsString::from(tmp_dir.path().join("csv_start.csv"));
