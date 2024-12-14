@@ -2,6 +2,7 @@ use crate::dwarf::{DebugData, DwarfDataType, TypeInfo, VarInfo};
 use crate::symbol::SymbolInfo;
 use std::collections::HashMap;
 use std::fmt::Write;
+use object::Endianness;
 
 pub(crate) struct TypeInfoIter<'dbg> {
     types: &'dbg HashMap<usize, TypeInfo>,
@@ -394,6 +395,7 @@ mod test {
         types.insert(1, structtype);
         let demangled_names = HashMap::new();
         let debugdata = DebugData {
+            endian: Endianness::Little,
             variables,
             types,
             typenames: HashMap::new(),
