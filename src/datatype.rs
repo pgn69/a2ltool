@@ -334,3 +334,64 @@ pub(crate) fn text_to_bytes(text: &str, datatype: &DataType, dim: usize, endiane
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_datatype_size() {
+        assert_eq!(get_datatype_size(&DataType::Ubyte), 1);
+        assert_eq!(get_datatype_size(&DataType::Sbyte), 1);
+        assert_eq!(get_datatype_size(&DataType::Uword), 2);
+        assert_eq!(get_datatype_size(&DataType::Sword), 2);
+        assert_eq!(get_datatype_size(&DataType::Ulong), 4);
+        assert_eq!(get_datatype_size(&DataType::Slong), 4);
+        assert_eq!(get_datatype_size(&DataType::AUint64), 8);
+        assert_eq!(get_datatype_size(&DataType::AInt64), 8);
+        assert_eq!(get_datatype_size(&DataType::Float16Ieee), 2);
+        assert_eq!(get_datatype_size(&DataType::Float32Ieee), 4);
+        assert_eq!(get_datatype_size(&DataType::Float64Ieee), 8);
+    }
+
+    #[test]
+    fn test_get_a2l_datatype() {
+        let typeinfo = TypeInfo { datatype: DwarfDataType::Uint8, name: None, unit_idx: 123, dbginfo_offset: 123 };
+        assert_eq!(get_a2l_datatype(&typeinfo), DataType::Ubyte);
+
+        let typeinfo = TypeInfo { datatype: DwarfDataType::Sint32, name: None, unit_idx: 123, dbginfo_offset: 123 };
+        assert_eq!(get_a2l_datatype(&typeinfo), DataType::Slong);
+
+        let typeinfo = TypeInfo { datatype: DwarfDataType::Float, name: None, unit_idx: 123, dbginfo_offset: 123 };
+        assert_eq!(get_a2l_datatype(&typeinfo), DataType::Float32Ieee);
+    }
+
+    #[test]
+    fn test_bytes_to_text() {
+        let bytes = [0x01, 0x00];
+        let datatype = DataType::Uword;
+        let endianess = ByteOrderEnum::LittleEndian;
+        assert_eq!(bytes_to_text(&bytes, &datatype, 1, &endianess).unwrap(), "1");
+
+        let endianess = ByteOrderEnum::BigEndian;
+        assert_eq!(bytes_to_text(&bytes, &datatype, 1, &endianess).unwrap(), "256");
+
+        let bytes = [0x01, 0x00, 0x02, 0x00];
+        let datatype = DataType::Uword;
+        let endianess = ByteOrderEnum::LittleEndian;
+        assert_eq!(bytes_to_text(&bytes, &datatype, 2, &endianess).unwrap(), "(1,2)");
+    }
+
+    #[test]
+    fn test_text_to_bytes() {
+        let text = "-2";
+        let datatype = DataType::Slong;
+        let endianess = ByteOrderEnum::LittleEndian;
+        assert_eq!(text_to_bytes(text, &datatype, 1, &endianess).unwrap(), vec![0xfe, 0xff, 0xff, 0xff]);
+
+        let text = "(1, 2)";
+        let datatype = DataType::Uword;
+        let endianess = ByteOrderEnum::BigEndian;
+        assert_eq!(text_to_bytes(text, &datatype, 2, &endianess).unwrap(), vec![0x00, 0x01, 0x00, 0x02]);
+    }
+}
