@@ -15,33 +15,45 @@ struct Calibration {
 }
 
 pub(crate) fn calibration_from_binary_to_csv(
-    a2l_file: &mut A2lFile, 
+    a2l_file: &mut A2lFile,
     elf_info: &Option<DebugData>,
     enable_structures: bool,
-    default_endianess: &ByteOrderEnum, 
-    binfile: &BinFile, 
+    default_endianess: &ByteOrderEnum,
+    binfile: &BinFile,
     csv_file: &OsString,
     log_msgs: &mut Vec<String>,
 ) -> Result<bool, String> {
     let mut calibrations = read_calibrations_csv(csv_file, &default_endianess);
-    calibration_symbols_load(&mut calibrations, a2l_file, elf_info, enable_structures, log_msgs)?;
+    calibration_symbols_load(
+        &mut calibrations,
+        a2l_file,
+        elf_info,
+        enable_structures,
+        log_msgs,
+    )?;
     read_calibration(&mut calibrations, &binfile, log_msgs)?;
     write_calibrations_csv(csv_file, &calibrations)?;
     Ok(true)
 }
 
 pub(crate) fn calibration_from_csv_to_binary(
-    a2l_file: &mut A2lFile, 
+    a2l_file: &mut A2lFile,
     elf_info: &Option<DebugData>,
     enable_structures: bool,
-    default_endianess: &ByteOrderEnum, 
-    binfile: &mut BinFile, 
+    default_endianess: &ByteOrderEnum,
+    binfile: &mut BinFile,
     csv_file: &OsString,
     binary_file: &OsString,
     log_msgs: &mut Vec<String>,
 ) -> Result<bool, String> {
     let mut calibrations = read_calibrations_csv(csv_file, &default_endianess);
-    calibration_symbols_load(&mut calibrations, a2l_file, elf_info, enable_structures, log_msgs)?;
+    calibration_symbols_load(
+        &mut calibrations,
+        a2l_file,
+        elf_info,
+        enable_structures,
+        log_msgs,
+    )?;
     write_calibration(&calibrations, binfile, log_msgs)?;
     save_binfile(binary_file, binfile, log_msgs)?;
     Ok(true)
@@ -373,4 +385,219 @@ fn save_binfile(
     }
 
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_read_calibrations_csv() {
+        let csv_file = OsString::from("tests/calibrate/cal_test_1.csv");
+        let default_endianess = ByteOrderEnum::LittleEndian;
+        let calibrations = read_calibrations_csv(&csv_file, &default_endianess);
+
+        assert_eq!(calibrations.len(), 5);
+        assert_eq!(calibrations[0].symbol, "cal_sleep_time");
+        assert_eq!(calibrations[0].value_repr, Some("250".to_string()));
+        assert_eq!(calibrations[1].symbol, "cal_float");
+        assert_eq!(calibrations[1].value_repr, Some("8.8888".to_string()));
+        assert_eq!(calibrations[2].symbol, "cal_text");
+        assert_eq!(calibrations[2].value_repr, Some("\"aaa\"".to_string()));
+        assert_eq!(calibrations[3].symbol, "cal_sleep_counts");
+        assert_eq!(calibrations[3].value_repr, Some("(2,4,6)".to_string()));
+    }
+
+    #[test]
+    fn test_read_calibration() {
+        let default_endianess = ByteOrderEnum::LittleEndian;
+        let mut calibrations = vec![
+            Calibration {
+                symbol: "cal_sleep_time".to_string(),
+                value_repr: None,
+                address: Some(0xc34c),
+                size: Some(4),
+                dim: Some(1),
+                dtype: Some(DataType::Ulong),
+                endianess: default_endianess,
+            },
+            Calibration {
+                symbol: "cal_double".to_string(),
+                value_repr: None,
+                address: Some(0xc320),
+                size: Some(8),
+                dim: Some(2),
+                dtype: Some(DataType::Float64Ieee),
+                endianess: default_endianess,
+            },
+        ];
+
+        let bin_file_path = OsString::from("tests/calibrate/cal_test_1.hex");
+        let binfile = BinFile::from_file(&bin_file_path).expect("Cannot read binary file");
+        let mut log_msgs = Vec::new();
+
+        let result = read_calibration(&mut calibrations, &binfile, &mut log_msgs);
+        assert!(result.is_ok());
+
+        assert_eq!(calibrations[0].symbol, "cal_sleep_time");
+        assert_eq!(
+            calibrations[0]
+                .value_repr
+                .as_ref()
+                .expect("Undefined value")
+                .parse::<u32>()
+                .expect("Value is not a number"),
+            100u32
+        );
+
+        assert_eq!(calibrations[1].symbol, "cal_double");
+        let text = calibrations[1]
+            .value_repr
+            .as_ref()
+            .expect("Undefined value");
+        assert!(text.starts_with('(') && text.ends_with(')'));
+        let numbers: Vec<&str> = text[1..text.len() - 1].split(',').collect();
+        assert_eq!(numbers.len(), 2);
+        let tolerance = 1e-6;
+        assert!(
+            (numbers[0].parse::<f64>().expect("Value is not a number") - 1.1111111).abs()
+                < tolerance,
+            "Values are not equal within the tolerance"
+        );
+        assert!(
+            (numbers[1].parse::<f64>().expect("Value is not a number") - 2.222222).abs()
+                < tolerance,
+            "Values are not equal within the tolerance"
+        );
+    }
+
+    #[test]
+    fn calibrate_test() {
+        let default_endianess = ByteOrderEnum::LittleEndian;
+        let a2l_path = OsString::from("tests/calibrate/cal_test_1.a2l");
+        let binary_start_path = OsString::from("tests/calibrate/cal_test_1.hex");
+        let csv_write_path = OsString::from("tests/calibrate/cal_test_1.csv");
+        let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+        let binary_end_path = OsString::from(tmp_dir.path().join("test.hex"));
+        let csv_read_start_path = OsString::from(tmp_dir.path().join("csv_start.csv"));
+        let csv_read_end_path = OsString::from(tmp_dir.path().join("csv_end.csv"));
+
+        let mut a2l_log_msgs = Vec::new();
+        let mut a2l_file =
+            a2lfile::load(&a2l_path, None, &mut a2l_log_msgs, false).expect("Cannot read A2L file");
+
+        let mut log_msgs = Vec::new();
+
+        std::fs::copy(&csv_write_path, &csv_read_start_path).expect("Failed to copy CSV file");
+        std::fs::copy(&csv_write_path, &csv_read_end_path).expect("Failed to copy CSV file");
+
+        let res = calibration_from_binary_to_csv(
+            &mut a2l_file,
+            &None,
+            false,
+            &default_endianess,
+            &BinFile::from_file(&binary_start_path).expect("Cannot read binary file"),
+            &csv_read_start_path,
+            &mut log_msgs,
+        );
+        assert!(res.is_ok());
+
+        let res = calibration_from_csv_to_binary(
+            &mut a2l_file,
+            &None,
+            false,
+            &default_endianess,
+            &mut BinFile::from_file(&binary_start_path).expect("Cannot read binary file"),
+            &csv_write_path,
+            &binary_end_path,
+            &mut log_msgs,
+        );
+        assert!(res.is_ok());
+
+        let res = calibration_from_binary_to_csv(
+            &mut a2l_file,
+            &None,
+            false,
+            &default_endianess,
+            &BinFile::from_file(&binary_end_path).expect("Cannot read binary file"),
+            &csv_read_end_path,
+            &mut log_msgs,
+        );
+        assert!(res.is_ok());
+
+        let mut calibrations_start =
+            read_calibrations_csv(&csv_read_start_path, &default_endianess);
+        calibration_symbols_load(
+            &mut calibrations_start,
+            &mut a2l_file,
+            &None,
+            false,
+            &mut log_msgs,
+        )
+        .expect("Error loading calibrations metadata");
+        let mut calibrations_write = read_calibrations_csv(&csv_write_path, &default_endianess);
+        calibration_symbols_load(
+            &mut calibrations_write,
+            &mut a2l_file,
+            &None,
+            false,
+            &mut log_msgs,
+        )
+        .expect("Error loading calibrations metadata");
+        let mut calibrations_end = read_calibrations_csv(&csv_read_end_path, &default_endianess);
+        calibration_symbols_load(
+            &mut calibrations_end,
+            &mut a2l_file,
+            &None,
+            false,
+            &mut log_msgs,
+        )
+        .expect("Error loading calibrations metadata");
+
+        assert_eq!(calibrations_start.len(), calibrations_end.len());
+        assert_eq!(calibrations_start.len(), calibrations_write.len());
+
+        for i in 0..calibrations_start.len() {
+            assert_eq!(calibrations_start[i].symbol, calibrations_end[i].symbol);
+            if calibrations_start[i].symbol != "cal_text" {
+                assert_eq!(
+                    calibrations_write[i].value_repr,
+                    calibrations_end[i].value_repr
+                );
+                assert_ne!(
+                    calibrations_start[i].value_repr,
+                    calibrations_end[i].value_repr
+                );
+            } else {
+                assert_eq!(
+                    datatype::text_to_bytes(
+                        calibrations_write[i].value_repr.as_ref().unwrap(),
+                        calibrations_write[i].dtype.as_ref().unwrap(),
+                        calibrations_write[i].dim.unwrap().into(),
+                        &default_endianess
+                    ),
+                    datatype::text_to_bytes(
+                        calibrations_end[i].value_repr.as_ref().unwrap(),
+                        calibrations_end[i].dtype.as_ref().unwrap(),
+                        calibrations_end[i].dim.unwrap().into(),
+                        &default_endianess
+                    )
+                );
+                assert_ne!(
+                    datatype::text_to_bytes(
+                        calibrations_start[i].value_repr.as_ref().unwrap(),
+                        calibrations_start[i].dtype.as_ref().unwrap(),
+                        calibrations_start[i].dim.unwrap().into(),
+                        &default_endianess
+                    ),
+                    datatype::text_to_bytes(
+                        calibrations_end[i].value_repr.as_ref().unwrap(),
+                        calibrations_end[i].dtype.as_ref().unwrap(),
+                        calibrations_end[i].dim.unwrap().into(),
+                        &default_endianess
+                    )
+                );
+            }
+        }
+    }
 }
