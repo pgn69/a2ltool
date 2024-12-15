@@ -2,7 +2,6 @@ use crate::dwarf::{DebugData, DwarfDataType, TypeInfo, VarInfo};
 use crate::symbol::SymbolInfo;
 use std::collections::HashMap;
 use std::fmt::Write;
-use object::Endianness;
 
 pub(crate) struct TypeInfoIter<'dbg> {
     types: &'dbg HashMap<usize, TypeInfo>,
@@ -245,6 +244,7 @@ impl<'dbg> VariablesIterator<'dbg> {
 mod test {
     use super::*;
     use indexmap::IndexMap;
+    use object::Endianness;
 
     const DEFAULT_TYPEINFO: TypeInfo = TypeInfo {
         name: None,
