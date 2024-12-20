@@ -373,13 +373,13 @@ mod tests {
 
     #[test]
     fn test_get_a2l_datatype() {
-        let typeinfo = TypeInfo { datatype: DwarfDataType::Uint8, name: None, unit_idx: 123, dbginfo_offset: 123 };
+        let typeinfo = TypeInfo { datatype: DbgDataType::Uint8, name: None, unit_idx: 123, dbginfo_offset: 123 };
         assert_eq!(get_a2l_datatype(&typeinfo), DataType::Ubyte);
 
-        let typeinfo = TypeInfo { datatype: DwarfDataType::Sint32, name: None, unit_idx: 123, dbginfo_offset: 123 };
+        let typeinfo = TypeInfo { datatype: DbgDataType::Sint32, name: None, unit_idx: 123, dbginfo_offset: 123 };
         assert_eq!(get_a2l_datatype(&typeinfo), DataType::Slong);
 
-        let typeinfo = TypeInfo { datatype: DwarfDataType::Float, name: None, unit_idx: 123, dbginfo_offset: 123 };
+        let typeinfo = TypeInfo { datatype: DbgDataType::Float, name: None, unit_idx: 123, dbginfo_offset: 123 };
         assert_eq!(get_a2l_datatype(&typeinfo), DataType::Float32Ieee);
     }
 

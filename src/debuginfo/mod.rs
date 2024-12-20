@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use object::Endianness;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fmt::Display;
@@ -73,6 +74,7 @@ pub(crate) enum DbgDataType {
 
 #[derive(Debug)]
 pub(crate) struct DebugData {
+    pub(crate) endian: Endianness,
     pub(crate) variables: IndexMap<String, Vec<VarInfo>>,
     pub(crate) types: HashMap<usize, TypeInfo>,
     pub(crate) typenames: HashMap<String, Vec<usize>>,
