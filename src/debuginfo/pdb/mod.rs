@@ -3,6 +3,7 @@ use indexmap::IndexMap;
 use pdb2::{AddressMap, FallibleIterator, RawString, SymbolData, PDB};
 use std::{collections::HashMap, ffi::OsStr, fs::File, vec};
 use typereader::TypeReaderData;
+use object::Endianness;
 
 use super::TypeInfo;
 
@@ -78,6 +79,7 @@ fn read_pdb(mut pdb: PDB<'_, File>) -> Result<DebugData, pdb2::Error> {
     }
 
     Ok(DebugData {
+        endian: Endianness::Little,  // PDB files are always little-endian
         variables,
         types,
         typenames,

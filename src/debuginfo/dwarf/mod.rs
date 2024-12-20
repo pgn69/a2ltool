@@ -639,7 +639,7 @@ mod test {
     #[test]
     fn test_elf_endianess() {
         for filename in ELF_FILE_NAMES {
-            let debugdata = DebugData::load(OsStr::new(filename), true).unwrap();
+            let debugdata = DebugData::load_dwarf(OsStr::new(filename), true).unwrap();
             assert!(debugdata.endian == Endianness::Little);
         }
     }

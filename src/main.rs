@@ -522,7 +522,7 @@ fn core(args: impl Iterator<Item = OsString>) -> Result<(), String> {
     // Read or write calibrations in a binary file
     if calibrate {
         let mut log_msgs: Vec<String> = Vec::new();
-        let guessed_default_endianess = calibrate::guess_default_endianess(&a2l_file, &elf_info);
+        let guessed_default_endianess = calibrate::guess_default_endianess(&a2l_file, &debuginfo);
         let default_endianess = if let Some(endianess) = arg_matches.get_one("DEAFULT_BYTE_ORDER").or(guessed_default_endianess.as_ref()) {
             endianess
         } else {
@@ -536,10 +536,10 @@ fn core(args: impl Iterator<Item = OsString>) -> Result<(), String> {
                 Err(e) => { return Err(format!("Error opening binary file. {}", e.to_string())); },
             };
             if let Some(csv_file) = arg_matches.get_one::<OsString>("CALIB_WRITE") {
-                calibrate::calibration_from_csv_to_binary(&mut a2l_file, &elf_info, enable_structures, default_endianess, &mut binfile, &csv_file, &binary_file, &mut log_msgs)?;
+                calibrate::calibration_from_csv_to_binary(&mut a2l_file, &debuginfo, enable_structures, default_endianess, &mut binfile, &csv_file, &binary_file, &mut log_msgs)?;
             } 
             if let Some(csv_file) = arg_matches.get_one::<OsString>("CALIB_READ") {
-                calibrate::calibration_from_binary_to_csv(&mut a2l_file, &elf_info, enable_structures, default_endianess, &binfile, &csv_file, &mut log_msgs)?;
+                calibrate::calibration_from_binary_to_csv(&mut a2l_file, &debuginfo, enable_structures, default_endianess, &binfile, &csv_file, &mut log_msgs)?;
             }
         }
 

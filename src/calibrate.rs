@@ -1,4 +1,4 @@
-use crate::{datatype, dwarf::DebugData, insert, search};
+use crate::{datatype, debuginfo::DebugData, insert, search};
 use a2lfile::{A2lFile, AddrType, ByteOrderEnum, CharacteristicType, DataType};
 use bin_file::{BinFile, IHexFormat, SRecordAddressLength};
 use std::{ffi::OsString, fs::File, io::Write, path::Path};
