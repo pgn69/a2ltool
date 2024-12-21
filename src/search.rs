@@ -5,7 +5,6 @@ use std::collections::HashMap;
 pub(crate) fn _search_measurements<'a>(
     a2l_file: &'a A2lFile,
     regex_strings: &[&str],
-    _log_messages: &mut Vec<String>,
 ) -> HashMap<&'a String, &'a Measurement> {
     let mut found = HashMap::new();
 
@@ -39,7 +38,6 @@ pub(crate) fn _search_measurements<'a>(
 pub(crate) fn search_characteristics<'a>(
     a2l_file: &'a A2lFile,
     regex_strings: &[&str],
-    _log_messages: &mut Vec<String>,
 ) -> HashMap<&'a String, &'a Characteristic> {
     let mut found = HashMap::new();
 
@@ -73,7 +71,6 @@ pub(crate) fn search_characteristics<'a>(
 pub(crate) fn search_reord_layout<'a>(
     a2l_file: &'a A2lFile,
     regex_strings: &[&str],
-    _log_messages: &mut Vec<String>,
 ) -> HashMap<&'a String, &'a RecordLayout> {
     let mut found = HashMap::new();
 
@@ -113,8 +110,7 @@ mod tests {
         let mut load_msgs = Vec::<a2lfile::A2lError>::new();
         let a2l_file = a2lfile::load("fixtures/a2l/example-a2l-file.a2l", None, &mut load_msgs, false).expect("Unable to load A2L file");
         let regex_strings = vec!["Measurement_0."];
-        let mut search_msgs = Vec::new();
-        let result = _search_measurements(&a2l_file, &regex_strings, &mut search_msgs);
+        let result = _search_measurements(&a2l_file, &regex_strings);
         assert_eq!(result.len(), 9);
     }
 
@@ -123,8 +119,7 @@ mod tests {
         let mut load_msgs = Vec::<a2lfile::A2lError>::new();
         let a2l_file = a2lfile::load("fixtures/a2l/example-a2l-file.a2l", None, &mut load_msgs, false).expect("Unable to load A2L file");
         let regex_strings = vec!["Characteristic_01", "Characteristic_14"];
-        let mut search_msgs = Vec::new();
-        let result = super::search_characteristics(&a2l_file, &regex_strings, &mut search_msgs);
+        let result = super::search_characteristics(&a2l_file, &regex_strings);
         assert_eq!(result.len(), 2);
         assert!(result.contains_key(&"Characteristic_01".to_string()));
         assert!(result.contains_key(&"Characteristic_14".to_string()));
@@ -135,8 +130,7 @@ mod tests {
         let mut load_msgs = Vec::<a2lfile::A2lError>::new();
         let a2l_file = a2lfile::load("fixtures/a2l/example-a2l-file.a2l", None, &mut load_msgs, false).expect("Unable to load A2L file");
         let regex_strings = vec!["RecordLayout_05"];
-        let mut search_msgs = Vec::new();
-        let result = super::search_reord_layout(&a2l_file, &regex_strings, &mut search_msgs);
+        let result = super::search_reord_layout(&a2l_file, &regex_strings);
         assert_eq!(result.len(), 1);
         assert!(result.contains_key(&"RecordLayout_05".to_string()));
     }
@@ -146,8 +140,7 @@ mod tests {
         let mut load_msgs = Vec::<a2lfile::A2lError>::new();
         let a2l_file = a2lfile::load("fixtures/a2l/example-a2l-file.a2l", None, &mut load_msgs, false).expect("Unable to load A2L file");
         let regex_strings = vec!["nonexistent"];
-        let mut search_msgs = Vec::new();
-        let result = super::_search_measurements(&a2l_file, &regex_strings, &mut search_msgs);
+        let result = super::_search_measurements(&a2l_file, &regex_strings);
         assert_eq!(result.len(), 0);
     }
 
@@ -156,8 +149,7 @@ mod tests {
         let mut load_msgs = Vec::<a2lfile::A2lError>::new();
         let a2l_file = a2lfile::load("fixtures/a2l/example-a2l-file.a2l", None, &mut load_msgs, false).expect("Unable to load A2L file");
         let regex_strings = vec!["nonexistent"];
-        let mut search_msgs = Vec::new();
-        let result = super::search_characteristics(&a2l_file, &regex_strings, &mut search_msgs);
+        let result = super::search_characteristics(&a2l_file, &regex_strings);
         assert_eq!(result.len(), 0);
     }
 
@@ -166,8 +158,7 @@ mod tests {
         let mut load_msgs = Vec::<a2lfile::A2lError>::new();
         let a2l_file = a2lfile::load("fixtures/a2l/example-a2l-file.a2l", None, &mut load_msgs, false).expect("Unable to load A2L file");
         let regex_strings = vec!["nonexistent"];
-        let mut search_msgs = Vec::new();
-        let result = super::search_reord_layout(&a2l_file, &regex_strings, &mut search_msgs);
+        let result = super::search_reord_layout(&a2l_file, &regex_strings);
         assert_eq!(result.len(), 0);
     }
 }
