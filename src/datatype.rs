@@ -117,87 +117,85 @@ pub(crate) fn bytes_to_text(bytes: &[u8], datatype: &DataType, dim: usize, endia
     let size = get_datatype_size(datatype) as usize;
     if bytes.len() != dim * size {
         Err("Size mismatch")
-    } else {
-        if dim == 1 {
-            match datatype {
-                DataType::Ubyte => Ok(bytes[0].to_string()),
-                DataType::Sbyte => {
-                    let x = bytes[0] as i8;
-                    Ok(x.to_string())
-                },
-                DataType::Uword => {
-                    match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(u16::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(u16::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        _ => Err("Byte order not implemented")
-                    }
-                },
-                DataType::Sword => {
-                    match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(i16::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(i16::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        _ => Err("Byte order not implemented")
-                    }
-                },
-                DataType::Ulong => {
-                    match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(u32::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(u32::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        _ => Err("Byte order not implemented")
-                    }
-                },
-                DataType::Slong => {
-                    match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(i32::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(i32::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        _ => Err("Byte order not implemented")
-                    }
-                },
-                DataType::AUint64 => {
-                    match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(u64::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(u64::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        _ => Err("Byte order not implemented")
-                    }
-                },
-                DataType::AInt64 => {
-                    match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(i64::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(i64::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        _ => Err("Byte order not implemented")
-                    }
-                },
-                DataType::Float16Ieee => {
-                    Err("Float16Ieee is not supported")
-                },
-                DataType::Float32Ieee => {
-                    match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(f32::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(f32::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        _ => Err("Byte order not implemented")
-                    }
-                },
-                DataType::Float64Ieee => {
-                    match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(f64::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(f64::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
-                        _ => Err("Byte order not implemented")
-                    }
-                },
-            }
-        } else if dim > 1 {
-            let mut repr = String::from("(");
-            let mut sep = "";
-            for i in 0..dim {
-                repr.push_str(&sep);
-                repr.push_str(& bytes_to_text(&bytes[i*size..(i+1)*size], datatype, 1, endianess)?);
-                sep = ",";
-            }
-            repr.push(')');
-            Ok(repr)
-        } else {
-            Err("Dimension zero is not allowed")
+    } else if dim == 1 {
+        match datatype {
+            DataType::Ubyte => Ok(bytes[0].to_string()),
+            DataType::Sbyte => {
+                let x = bytes[0] as i8;
+                Ok(x.to_string())
+            },
+            DataType::Uword => {
+                match endianess {
+                    ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(u16::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(u16::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    _ => Err("Byte order not implemented")
+                }
+            },
+            DataType::Sword => {
+                match endianess {
+                    ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(i16::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(i16::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    _ => Err("Byte order not implemented")
+                }
+            },
+            DataType::Ulong => {
+                match endianess {
+                    ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(u32::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(u32::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    _ => Err("Byte order not implemented")
+                }
+            },
+            DataType::Slong => {
+                match endianess {
+                    ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(i32::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(i32::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    _ => Err("Byte order not implemented")
+                }
+            },
+            DataType::AUint64 => {
+                match endianess {
+                    ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(u64::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(u64::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    _ => Err("Byte order not implemented")
+                }
+            },
+            DataType::AInt64 => {
+                match endianess {
+                    ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(i64::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(i64::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    _ => Err("Byte order not implemented")
+                }
+            },
+            DataType::Float16Ieee => {
+                Err("Float16Ieee is not supported")
+            },
+            DataType::Float32Ieee => {
+                match endianess {
+                    ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(f32::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(f32::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    _ => Err("Byte order not implemented")
+                }
+            },
+            DataType::Float64Ieee => {
+                match endianess {
+                    ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(f64::from_le_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(f64::from_be_bytes(bytes[0..size].try_into().unwrap()).to_string()),
+                    _ => Err("Byte order not implemented")
+                }
+            },
         }
+    } else if dim > 1 {
+        let mut repr = String::from("(");
+        let mut sep = "";
+        for i in 0..dim {
+            repr.push_str(sep);
+            repr.push_str(& bytes_to_text(&bytes[i*size..(i+1)*size], datatype, 1, endianess)?);
+            sep = ",";
+        }
+        repr.push(')');
+        Ok(repr)
+    } else {
+        Err("Dimension zero is not allowed")
     }
 }
 
@@ -214,8 +212,8 @@ pub(crate) fn text_to_bytes(text: &str, datatype: &DataType, dim: usize, endiane
         if numbers.len() == dim {
             let size = get_datatype_size(datatype) as usize;
             let mut ret = Vec::with_capacity(dim * size);
-            for i in 0..dim {
-                ret.append(&mut text_to_bytes(&numbers[i], datatype, 1, endianess)?);
+            for number in numbers {
+                ret.append(&mut text_to_bytes(number, datatype, 1, endianess)?);
             }
             Ok(ret)
         } else {
@@ -235,26 +233,26 @@ pub(crate) fn text_to_bytes(text: &str, datatype: &DataType, dim: usize, endiane
         match datatype {
             DataType::Ubyte => {
                 let n = text.parse::<u8>();
-                if n.is_ok() {
-                    Ok(Vec::from(n.unwrap().to_le_bytes()))
+                if let Ok(n) = n {
+                    Ok(Vec::from(n.to_le_bytes()))
                 } else {
                     Err("Error parsing number")
                 }
             },
             DataType::Sbyte => {
                 let n = text.parse::<i8>();
-                if n.is_ok() {
-                    Ok(Vec::from(n.unwrap().to_le_bytes()))
+                if let Ok(n) = n {
+                    Ok(Vec::from(n.to_le_bytes()))
                 } else {
                     Err("Error parsing number")
                 }
             },
             DataType::Uword => {
                 let n = text.parse::<u16>();
-                if n.is_ok() {
+                if let Ok(n) = n {
                     match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.unwrap().to_le_bytes())),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.unwrap().to_be_bytes())),
+                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.to_le_bytes())),
+                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.to_be_bytes())),
                         _ => Err("Byte order not implemented")
                     }
                 } else {
@@ -263,10 +261,10 @@ pub(crate) fn text_to_bytes(text: &str, datatype: &DataType, dim: usize, endiane
             },
             DataType::Sword => {
                 let n = text.parse::<i16>();
-                if n.is_ok() {
+                if let Ok(n) = n {
                     match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.unwrap().to_le_bytes())),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.unwrap().to_be_bytes())),
+                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.to_le_bytes())),
+                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.to_be_bytes())),
                         _ => Err("Byte order not implemented")
                     }
                 } else {
@@ -275,10 +273,10 @@ pub(crate) fn text_to_bytes(text: &str, datatype: &DataType, dim: usize, endiane
             },
             DataType::Ulong => {
                 let n = text.parse::<u32>();
-                if n.is_ok() {
+                if let Ok(n) = n {
                     match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.unwrap().to_le_bytes())),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.unwrap().to_be_bytes())),
+                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.to_le_bytes())),
+                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.to_be_bytes())),
                         _ => Err("Byte order not implemented")
                     }
                 } else {
@@ -287,10 +285,10 @@ pub(crate) fn text_to_bytes(text: &str, datatype: &DataType, dim: usize, endiane
             },
             DataType::Slong => {
                 let n = text.parse::<i32>();
-                if n.is_ok() {
+                if let Ok(n) = n {
                     match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.unwrap().to_le_bytes())),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.unwrap().to_be_bytes())),
+                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.to_le_bytes())),
+                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.to_be_bytes())),
                         _ => Err("Byte order not implemented")
                     }
                 } else {
@@ -299,10 +297,10 @@ pub(crate) fn text_to_bytes(text: &str, datatype: &DataType, dim: usize, endiane
             },
             DataType::AUint64 => {
                 let n = text.parse::<u64>();
-                if n.is_ok() {
+                if let Ok(n) = n {
                     match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.unwrap().to_le_bytes())),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.unwrap().to_be_bytes())),
+                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.to_le_bytes())),
+                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.to_be_bytes())),
                         _ => Err("Byte order not implemented")
                     }
                 } else {
@@ -311,10 +309,10 @@ pub(crate) fn text_to_bytes(text: &str, datatype: &DataType, dim: usize, endiane
             },
             DataType::AInt64 => {
                 let n = text.parse::<i64>();
-                if n.is_ok() {
+                if let Ok(n) = n {
                     match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.unwrap().to_le_bytes())),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.unwrap().to_be_bytes())),
+                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.to_le_bytes())),
+                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.to_be_bytes())),
                         _ => Err("Byte order not implemented")
                     }
                 } else {
@@ -326,10 +324,10 @@ pub(crate) fn text_to_bytes(text: &str, datatype: &DataType, dim: usize, endiane
             },
             DataType::Float32Ieee => {
                 let n = text.parse::<f32>();
-                if n.is_ok() {
+                if let Ok(n) = n {
                     match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.unwrap().to_le_bytes())),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.unwrap().to_be_bytes())),
+                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.to_le_bytes())),
+                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.to_be_bytes())),
                         _ => Err("Byte order not implemented")
                     }
                 } else {
@@ -338,10 +336,10 @@ pub(crate) fn text_to_bytes(text: &str, datatype: &DataType, dim: usize, endiane
             },
             DataType::Float64Ieee => {
                 let n = text.parse::<f64>();
-                if n.is_ok() {
+                if let Ok(n) = n {
                     match endianess {
-                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.unwrap().to_le_bytes())),
-                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.unwrap().to_be_bytes())),
+                        ByteOrderEnum::LittleEndian | ByteOrderEnum::MsbLast => Ok(Vec::from(n.to_le_bytes())),
+                        ByteOrderEnum::BigEndian | ByteOrderEnum::MsbFirst => Ok(Vec::from(n.to_be_bytes())),
                         _ => Err("Byte order not implemented")
                     }
                 } else {

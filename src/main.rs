@@ -541,13 +541,13 @@ fn core(args: impl Iterator<Item = OsString>) -> Result<(), String> {
         if let Some(binary_file) = arg_matches.get_one::<OsString>("BINARY") {
             let mut binfile = match BinFile::from_file(binary_file) {
                 Ok(bf) => bf,
-                Err(e) => { return Err(format!("Error opening binary file. {}", e.to_string())); },
+                Err(e) => { return Err(format!("Error opening binary file. {}", e)); },
             };
             if let Some(csv_file) = arg_matches.get_one::<OsString>("CALIB_WRITE") {
-                calibrate::calibration_from_csv_to_binary(&mut a2l_file, &debuginfo, enable_structures, default_endianess, &mut binfile, &csv_file, &binary_file, &mut log_msgs)?;
+                calibrate::calibration_from_csv_to_binary(&mut a2l_file, &debuginfo, enable_structures, default_endianess, &mut binfile, csv_file, binary_file, &mut log_msgs)?;
             } 
             if let Some(csv_file) = arg_matches.get_one::<OsString>("CALIB_READ") {
-                calibrate::calibration_from_binary_to_csv(&mut a2l_file, &debuginfo, enable_structures, default_endianess, &binfile, &csv_file, &mut log_msgs)?;
+                calibrate::calibration_from_binary_to_csv(&mut a2l_file, &debuginfo, enable_structures, default_endianess, &binfile, csv_file, &mut log_msgs)?;
             }
         }
 

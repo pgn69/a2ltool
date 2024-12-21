@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use crate::{datatype, debuginfo::DebugData, insert, search};
 use a2lfile::{A2lFile, AddrType, ByteOrderEnum, CharacteristicType, DataType};
 use bin_file::{BinFile, IHexFormat, SRecordAddressLength};
@@ -16,8 +17,8 @@ struct Calibration {
 
 #[derive(Debug, Clone, Copy)]
 pub enum BinFileFormat {
-    SREC,
-    IHEX,
+    Srec,
+    Ihex,
 }
 
 pub(crate) fn calibration_from_binary_to_csv(
@@ -29,7 +30,7 @@ pub(crate) fn calibration_from_binary_to_csv(
     csv_file: &OsString,
     log_msgs: &mut Vec<String>,
 ) -> Result<bool, String> {
-    let mut calibrations = read_calibrations_csv(csv_file, &default_endianess);
+    let mut calibrations = read_calibrations_csv(csv_file, default_endianess);
     calibration_symbols_load(
         &mut calibrations,
         a2l_file,
@@ -37,7 +38,7 @@ pub(crate) fn calibration_from_binary_to_csv(
         enable_structures,
         log_msgs,
     )?;
-    read_calibration(&mut calibrations, &binfile, log_msgs)?;
+    read_calibration(&mut calibrations, binfile, log_msgs)?;
     write_calibrations_csv(csv_file, &calibrations)?;
     Ok(true)
 }
@@ -52,7 +53,7 @@ pub(crate) fn calibration_from_csv_to_binary(
     binary_file: &OsString,
     log_msgs: &mut Vec<String>,
 ) -> Result<bool, String> {
-    let mut calibrations = read_calibrations_csv(csv_file, &default_endianess);
+    let mut calibrations = read_calibrations_csv(csv_file, default_endianess);
     calibration_symbols_load(
         &mut calibrations,
         a2l_file,
@@ -61,7 +62,7 @@ pub(crate) fn calibration_from_csv_to_binary(
         log_msgs,
     )?;
     write_calibration(&calibrations, binfile, log_msgs)?;
-    save_binfile(binary_file, binfile, log_msgs)?;
+    save_binfile(binary_file, binfile)?;
     Ok(true)
 }
 
@@ -74,7 +75,7 @@ pub(crate) fn guess_default_endianess(
         if let Some(mod_common) = &module.mod_common {
             if let Some(byte_order) = &mod_common.byte_order {
                 if default_order.is_none() {
-                    default_order = Some(byte_order.byte_order.clone());
+                    default_order = Some(byte_order.byte_order);
                 } else if byte_order.byte_order != default_order.unwrap() {
                     panic!("Mixed BYTE_ORDER in MOD_COMMON not supported. Specify the --default_byte_order on the command line.")
                 }
@@ -101,9 +102,9 @@ fn read_calibrations_csv(
 
     for line in text.lines() {
         let fields: Vec<&str> = line.split(';').collect();
-        if fields.len() > 0 {
+        if !fields.is_empty() {
             let f = fields[0].trim();
-            if f.len() > 0 && !f.starts_with("#") {
+            if !f.is_empty() && !f.starts_with("#") {
                 let mut cal = Calibration {
                     symbol: f.to_string(),
                     value_repr: None,
@@ -111,11 +112,11 @@ fn read_calibrations_csv(
                     size: None,
                     dim: None,
                     dtype: None,
-                    endianess: default_endianess.clone(),
+                    endianess: *default_endianess,
                 };
                 if fields.len() > 1 {
                     let f = fields[1].trim();
-                    if f.len() > 0 {
+                    if !f.is_empty() {
                         cal.value_repr = Some(f.to_string());
                     }
                 }
@@ -143,16 +144,16 @@ fn write_calibrations_csv(
         let mut bypass = true;
         let l = line.trim();
         let fields: Vec<&str> = line.split(';').collect();
-        if fields.len() > 0 {
+        if !fields.is_empty() {
             let f = fields[0].trim();
-            if f.len() > 0 && !f.starts_with("#") {
+            if !f.is_empty() && !f.starts_with("#") {
                 if let Some(cal) = calmap.get(f) {
                     bypass = false;
                     writeln!(
                         file,
                         "{};{}",
-                        (*cal).symbol,
-                        (*cal).value_repr.as_ref().unwrap_or(&String::from(""))
+                        cal.symbol,
+                        cal.value_repr.as_ref().unwrap_or(&String::from(""))
                     )
                     .expect("Error writing CSV file");
                 }
@@ -173,7 +174,7 @@ fn calibration_symbols_load(
     enable_structures: bool,
     log_msgs: &mut Vec<String>,
 ) -> Result<bool, String> {
-    let mut characteristics = search::search_characteristics(a2l_file, &[".*"], log_msgs);
+    let mut characteristics = search::search_characteristics(a2l_file, &[".*"]);
 
     if let Some(debugdata) = &elf_info {
         // Add the characteristics that are listed in the CSV file, but not in the A2L.
@@ -194,11 +195,11 @@ fn calibration_symbols_load(
                 enable_structures,
             );
 
-            characteristics = search::search_characteristics(a2l_file, &[".*"], log_msgs);
+            characteristics = search::search_characteristics(a2l_file, &[".*"]);
         }
     }
 
-    let record_layouts = search::search_reord_layout(a2l_file, &[".*"], log_msgs);
+    let record_layouts = search::search_reord_layout(a2l_file, &[".*"]);
 
     for cal in &mut *calibrations {
         if let Some(characteristic) = characteristics.get(&cal.symbol) {
@@ -260,7 +261,7 @@ fn read_calibration(
     binfile: &BinFile,
     log_msgs: &mut Vec<String>,
 ) -> Result<bool, String> {
-    log_msgs.push(format!("Reading calibrations from binary."));
+    log_msgs.push("Reading calibrations from binary.".to_string());
     for cal in &mut *calibrations {
         cal.value_repr = None;
         if cal.address.is_some() && cal.dtype.is_some() && cal.size.is_some() && cal.dim.is_some() {
@@ -296,7 +297,7 @@ fn write_calibration(
     binfile: &mut BinFile,
     log_msgs: &mut Vec<String>,
 ) -> Result<bool, String> {
-    log_msgs.push(format!("Writing calibrations to binary."));
+    log_msgs.push("Writing calibrations to binary.".to_string());
     for cal in calibrations {
         if cal.address.is_some()
             && cal.dtype.is_some()
@@ -307,7 +308,7 @@ fn write_calibration(
             let a = cal.address.unwrap() as usize;
             let d = cal.dim.unwrap() as usize;
             match datatype::text_to_bytes(
-                &cal.value_repr.as_ref().unwrap(),
+                cal.value_repr.as_ref().unwrap(),
                 cal.dtype.as_ref().unwrap(),
                 d,
                 &cal.endianess,
@@ -349,11 +350,11 @@ fn guess_binfile_format(
 
         match ext_lower.as_str() {
             "srec" | "s19" | "s28" | "s37" => {
-                binfile_format = Some(BinFileFormat::SREC);
+                binfile_format = Some(BinFileFormat::Srec);
                 srec_addr_len = Some(SRecordAddressLength::Length32);
             }
             "hex" | "ihex" => {
-                binfile_format = Some(BinFileFormat::IHEX);
+                binfile_format = Some(BinFileFormat::Ihex);
                 ihex_format = Some(IHexFormat::IHex32);
             }
             _ => {}
@@ -366,18 +367,17 @@ fn guess_binfile_format(
 fn save_binfile(
     binary_file: &OsString,
     binfile: &BinFile,
-    _log_msgs: &mut Vec<String>,
 ) -> Result<bool, String> {
     let (binfile_format, srec_addr_len, ihex_format) = guess_binfile_format(binary_file);
 
     let text: Vec<String> = match binfile_format {
-        Some(BinFileFormat::SREC) => binfile
+        Some(BinFileFormat::Srec) => binfile
             .to_srec(
                 None,
                 srec_addr_len.unwrap_or(SRecordAddressLength::Length32),
             )
             .unwrap(),
-        Some(BinFileFormat::IHEX) => binfile
+        Some(BinFileFormat::Ihex) => binfile
             .to_ihex(None, ihex_format.unwrap_or(IHexFormat::IHex32))
             .unwrap(),
         _ => {
