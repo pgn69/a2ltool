@@ -22,7 +22,7 @@ jobs:
             binary: a2ltool
           - os: windows
             runner: windows-latest
-            target: x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-gnu
             binary: a2ltool.exe
     env:
       ZIP_NAME: a2ltool-${{ matrix.os }}-${{ inputs.rel_tag }}.zip
