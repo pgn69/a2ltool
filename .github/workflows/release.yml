@@ -1,9 +1,12 @@
 name: Release Workflow
 
 on:
-  push:
-    tags:
-      - 'v*' # e.g. v1.0.0
+  workflow_dispatch:
+    inputs:
+      rel_tag:
+        description: 'Tag to release'
+        required: true
+        default: 'TEST'
 
 jobs:
   build:
@@ -22,7 +25,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             binary: a2ltool.exe
     env:
-      ZIP_NAME: a2ltool-${{ matrix.os }}-${{ github.ref_name }}.zip
+      ZIP_NAME: a2ltool-${{ matrix.os }}-${{ inputs.rel_tag }}.zip
           
     steps:
       - uses: actions/checkout@v2
@@ -84,7 +87,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag: ${{ github.ref }}
-          name: Version ${{ github.ref_name }}
+          name: Version ${{ inputs.rel_tag }}
           body: ${{ github.event.head_commit.message }}
           draft: true
           prerelease: false
